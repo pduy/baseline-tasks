@@ -1,0 +1,14 @@
+.idea
+object-and-pose-recognition/dog.png
+object-and-pose-recognition/dog2.png
+object-and-pose-recognition/poodle.png
+object-and-pose-recognition/quail227.JPEG
+__init__.py
+bvlc_alexnet.bin
+bvlc_alexnet.npy
+caffe_classes.py
+ilsvrc_2012_mean.npy
+laska.png
+myalexnet_forward.py
+myalexnet_forward_newtf.py
+
