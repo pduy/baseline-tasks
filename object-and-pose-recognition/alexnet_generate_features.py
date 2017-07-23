@@ -1,9 +1,10 @@
 import os
+from os.path import *
 import pandas as pd
 import tensorflow as tf
-from numpy import *
 import numpy as np
 from scipy.misc import *
+import time
 
 
 def conv(input, kernel, biases, k_h, k_w, c_o, s_h, s_w, padding="VALID", group=1):
@@ -28,7 +29,7 @@ def init_alex_net(n_data):
     input_dim = (256, 256, 3)
     xdim = (227, 227, 3)
 
-    net_data = load(open("bvlc_alexnet.npy", "rb"), encoding="latin1").item()
+    net_data = np.load(open("bvlc_alexnet.npy", "rb"), encoding="latin1").item()
 
     input_alex = tf.placeholder(tf.float32, (None,) + input_dim)
 
@@ -154,7 +155,7 @@ def init_alex_net(n_data):
     # fc(4096, name='fc6')
     fc6W = tf.Variable(net_data["fc6"][0])
     fc6b = tf.Variable(net_data["fc6"][1])
-    fc6 = tf.nn.relu_layer(tf.reshape(maxpool5, [-1, int(prod(maxpool5.get_shape()[1:]))]), fc6W, fc6b)
+    fc6 = tf.nn.relu_layer(tf.reshape(maxpool5, [-1, int(np.prod(maxpool5.get_shape()[1:]))]), fc6W, fc6b)
 
     # fc7
     # fc(4096, name='fc7')
@@ -166,7 +167,7 @@ def init_alex_net(n_data):
 
 
 def alex_net_fc7(sess, input_alex, fc7, input_images):
-    input_images = [input_image - mean(input_image) for input_image in input_images]
+    input_images = [input_image - np.mean(input_image) for input_image in input_images]
     output_fc7 = sess.run(fc7, feed_dict={input_alex: input_images})
 
     return output_fc7
@@ -188,7 +189,7 @@ def load_batch(dataframe):
     labels = []
     for i in range(dataframe.shape[0]):
         item = dataframe.iloc[i]
-        image = imread(item.location).astype(float32)
+        image = imread(item.location).astype(np.float32)
 
         rgbs.append(image[:, 0: image.shape[1]//2, :])
         depths.append(image[:, image.shape[1]//2: image.shape[1], :])
@@ -196,7 +197,7 @@ def load_batch(dataframe):
         label = [int(x) for x in label]
         labels.append(label)
 
-    return array(rgbs), array(depths), labels
+    return np.array(rgbs), np.array(depths), labels
 
 
 def fuse_batch(dataframe, sess, rgb_data, depth_data):
@@ -208,7 +209,7 @@ def fuse_batch(dataframe, sess, rgb_data, depth_data):
     fc7_depth = alex_net_fc7(sess, depth_data['input_alex'], depth_data['fc7'], depths)
     # fc_7_fused = fc7_rgb * 0.5 + fc7_depth * 0.5            # add a fusion layer 4096 x 2
 
-    return concatenate([fc7_rgb, fc7_depth], axis=1), labels
+    return np.concatenate([fc7_rgb, fc7_depth], axis=1), labels
 
 
 def fuse_batch_only_rgb(dataframe, sess, input_alex, fc7):
@@ -221,18 +222,38 @@ def fuse_batch_only_rgb(dataframe, sess, input_alex, fc7):
     return fc7_rgb, labels
 
 
+def load_representations(data_frame):
+    reps = []
+    labels = []
+    for i in range(data_frame.shape[0]):
+        current_row = data_frame.iloc[i]
+        rgb_file = current_row.rgb_rep_location
+        depth_file = current_row.depth_rep_location
+
+        label = current_row.label[1:-1].split(' ')
+        label = [int(x) for x in label]
+        labels.append(label)
+
+        rgb_vector = np.loadtxt(rgb_file)
+        depth_vector = np.loadtxt(depth_file)
+
+        rep = np.concatenate([rgb_vector, depth_vector], axis=0)
+        reps.append(rep)
+
+    return np.array(reps), np.array(labels)
+
+
 def set_up_individual_model(batch_size, n_classes):
     input_alex, fc7 = init_alex_net(batch_size)
-    y_ = tf.placeholder(float32, [None, n_classes])
+    y_ = tf.placeholder(np.float32, [None, n_classes])
 
     fc_tuning_classW = weight_variable([4096, n_classes])
     fc_tuning_classb = bias_variable([n_classes])
     fc_tuning_class = tf.nn.xw_plus_b(fc7, fc_tuning_classW, fc_tuning_classb)
 
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=fc_tuning_class)
-    train_step1 = tf.train.AdamOptimizer(0.01).minimize(cross_entropy)
-    # train_step2 = tf.train.AdamOptimizer(0.001).minimize(cross_entropy)
-    train_step2 = tf.train.AdamOptimizer(0.01).minimize(cross_entropy)
+    train_step1 = tf.train.GradientDescentOptimizer(learning_rate=0.0001).minimize(cross_entropy)
+    train_step2 = tf.train.GradientDescentOptimizer(learning_rate=0.0001).minimize(cross_entropy)
 
     return {'input_alex': input_alex,
             'fc7': fc7,
@@ -242,10 +263,7 @@ def set_up_individual_model(batch_size, n_classes):
             'cross_entropy': cross_entropy}
 
 
-def set_up_network(batch_size, n_sources, n_classes):
-    rgb_model_data = set_up_individual_model(batch_size, n_classes)
-    depth_model_data = set_up_individual_model(batch_size, n_classes)
-
+def set_up_network(batch_size, n_sources, n_classes, need_individual_network=False):
     classifier_x = tf.placeholder(tf.float32, shape=[None, 4096*n_sources])
     y_ = tf.placeholder(tf.float32, shape=[None, n_classes])
 
@@ -257,7 +275,13 @@ def set_up_network(batch_size, n_sources, n_classes):
     fc_classb = bias_variable([n_classes])
     fc_class = tf.nn.xw_plus_b(fc1_fus, fc_classW, fc_classb)
 
-    return classifier_x, y_, fc_class, rgb_model_data, depth_model_data
+    if need_individual_network:
+        rgb_model_data = set_up_individual_model(batch_size, n_classes)
+        depth_model_data = set_up_individual_model(batch_size, n_classes)
+
+        return classifier_x, y_, fc_class, rgb_model_data, depth_model_data
+    else:
+        return classifier_x, y_, fc_class, fc1_fusW
 
 
 def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess, model_path):
@@ -274,7 +298,7 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
 
     train_df = train_df.sample(frac=1, random_state=2000)
 
-    max_steps = 600
+    max_steps = 10
     steps_per_epoch = train_df.shape[0] / batch_size
 
     current_row = 0
@@ -295,10 +319,10 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
         # if i % (steps_per_epoch/4) == 0:
         if i % 100 == 0:
             train_loss_rgb = cross_entropy_rgb.eval(feed_dict={input_alex_rgb: rgbs, y_rgb: labels})
-            print 'step %d, rgb train cross entropy = %g' % (i, mean(train_loss_rgb))
+            print 'step %d, rgb train cross entropy = %g' % (i, np.mean(train_loss_rgb))
 
             train_loss_depth = cross_entropy_depth.eval(feed_dict={input_alex_depth: depths, y_depth: labels})
-            print '========depth train cross entropy = %g' % mean(train_loss_depth)
+            print '========depth train cross entropy = %g' % np.mean(train_loss_depth)
 
             saver.save(sess, model_path)
 
@@ -312,35 +336,16 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
 
 def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
                          checkpoint_path='', n_sources=2, is_testing=False):
-    saving_path = os.path.join(os.path.split(model_path)[0], "tuning-model")
-
-    if not os.path.isdir(os.path.split(model_path)[0]):
-        os.mkdir(os.path.split(model_path)[0])
-
-    if not os.path.isdir(saving_path):
-        os.mkdir(saving_path)
-
-    # train_df = pd.read_csv(train_path).sample(frac=1, random_state=1000)
-    # test_df = pd.read_csv(test_path)
-    train_df, test_df = lai_et_al_split(train_df, test_df)
-    train_df = train_df.sample(frac=1, random_state=1000)
-
-    print 'shuffled training data length = %d' % train_df.shape[0]
-    print 'test data length = %d' % test_df.shape[0]
-
-    # max_steps = n_epochs * train_df.shape[0] / batch_size
-    max_steps = 20000       # set exactly the same as the paper Eitel et. al
-    steps_per_epoch = train_df.shape[0] / batch_size
 
     n_classes = 51
 
-    classifier_x, y_, fc_class, rgb_model_data, depth_model_data = \
+    classifier_x, y_, fc_class, fc1_fusW = \
         set_up_network(batch_size, n_sources, n_classes)
 
     correct_prediction = tf.equal(tf.arg_max(y_, 1), tf.arg_max(fc_class, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=fc_class)
-    train_step = tf.train.AdamOptimizer(0.01).minimize(cross_entropy)
+    train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
 
     init = tf.global_variables_initializer()
     sess = tf.InteractiveSession()
@@ -348,12 +353,32 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
 
     saver = tf.train.Saver(max_to_keep=1)
 
-    tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
-                  saving_path + "/tuning")
+    # tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
+    #               saving_path + "/tuning")
 
     if is_testing:
         restore_model(checkpoint_path, sess)
     else:
+        timestamp = time.time()
+        parent = split(model_path)[0]
+        file_name = split(model_path)[1]
+
+        # saving_path = join(split(model_path)[0], "tuning-model")
+        # if not isdir(saving_path):
+        #     os.mkdir(saving_path)
+
+        model_path = join(parent, str(timestamp), file_name)
+        if not isdir(split(model_path)[0]):
+            os.mkdir(split(model_path)[0])
+
+
+        # max_steps = n_epochs * train_df.shape[0] / batch_size
+        max_steps = 20000  # set exactly the same as the paper Eitel et. al
+        steps_per_epoch = train_df.shape[0] / batch_size
+
+        print 'shuffled training data length = %d' % train_df.shape[0]
+        print 'test data length = %d' % test_df.shape[0]
+
         current_row = 0
         for i in range(max_steps):
             # Load the batch metadata
@@ -364,24 +389,25 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
 
             current_row = current_row + batch_size if current_row + batch_size < train_df.shape[0] else 0
 
-            fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
+            # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
             # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
+            fc_7_fused, labels = load_representations(batch_df)
 
             if i % (steps_per_epoch/10) == 0:
                 train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
                 print 'step %d, training accuracy = %g' % (i, train_accuracy)
                 train_loss = cross_entropy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
-                print '======== train cross entropy = %g' % mean(train_loss)
+                print '======== train cross entropy = %g' % np.mean(train_loss)
 
-                tf.summary.scalar("accuracy", accuracy)
-                tf.summary.scalar("loss", cross_entropy)
+                # tf.summary.scalar("accuracy", accuracy)
+                # tf.summary.scalar("loss", cross_entropy)
                 saver.save(sess, model_path)
 
             # Train the last 2 layers
             train_step.run(feed_dict={classifier_x: fc_7_fused, y_: labels})
 
     # Test with the validation set
-    n_test_steps = int(ceil(test_df.shape[0] * 1.0 / batch_size))
+    n_test_steps = int(np.ceil(test_df.shape[0] * 1.0 / batch_size))
 
     accuracies = []
     current_row = 0
@@ -394,31 +420,31 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
 
         current_row = current_row + batch_size if current_row + batch_size < test_df.shape[0] else 0
 
-        fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
+        fc_7_fused, labels = load_representations(batch_df)
         # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
 
         current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
 
-        if i % 100 == 0:
+        if i % 1 == 0:
             print "step %d, %d left, accuracy %g" % (i, n_test_steps - i, current_accuracy)
         accuracies.append(current_accuracy)
 
-    return mean(accuracies)
+    print "mean accuracy = %g" % np.mean(accuracies)
+
+    return np.mean(accuracies)
 
 
-def lai_et_al_split(train_df, test_df):
-    random.seed(1000)
-
-    categories = sort(unique(train_df.category))
+def lai_et_al_split(train_df, test_df, n_sampling_step=1):
+    categories = np.sort(np.unique(train_df.category))
 
     # new_train_df = pd.DataFrame(columns=list(train_df))
     test_sequences = []
     for category in categories:
         category_df = train_df[train_df.category == category]
-        instances = unique(category_df.instance_number)
+        instances = np.unique(category_df.instance_number)
         for instance in instances:
             instance_df = category_df[category_df.instance_number == instance]
-            video_nos = unique(instance_df.video_no)
+            video_nos = np.unique(instance_df.video_no)
             sequences = []
             for video_no in video_nos:
                 video_df = instance_df[instance_df.video_no == video_no]
@@ -427,7 +453,10 @@ def lai_et_al_split(train_df, test_df):
                 sequences.append(instance_df.iloc[instance_df.shape[0]/3: instance_df.shape[0]*2/3])
                 sequences.append(instance_df.iloc[instance_df.shape[0]*2/3: instance_df.shape[0]])
 
-            test_indices = random.choice(9, size=2, replace=False)
+            # do this in order to pick the n_th train-test split in the 10-cv setting
+            for _ in range(n_sampling_step - 1):
+                np.random.choice(9, size=2, replace=False)
+            test_indices = np.random.choice(9, size=2, replace=False)
 
             for i in test_indices:
                 test_sequences.append(sequences[i])
@@ -441,36 +470,133 @@ def lai_et_al_split(train_df, test_df):
 
 def restore_model(path, sess):
     print "restoring models"
-    saver = tf.train.import_meta_graph(os.path.join(path, 'fusion-net.meta'))
+    saver = tf.train.import_meta_graph(join(path, 'fusion-net.meta'))
     checkpoint = tf.train.latest_checkpoint(path)
     saver.restore(sess, checkpoint)
+    return sess
+
+
+# def create_washington_representations(data_frame, saving_path, generated_portion=0.0):
+def create_washington_representations(data_frame, saving_path):
+    if isfile(saving_path):
+        return pd.read_csv(saving_path)
+
+    if not isdir(split(saving_path)[0]):
+        os.makedirs(split(saving_path)[0])
+
+    input_alex, fc7 = init_alex_net(1)
+    sess = tf.InteractiveSession()
+    init = tf.global_variables_initializer()
+    sess.run(init)
+
+    rep_data = []
+    for i in range(data_frame.shape[0]):
+        current_item = data_frame.iloc[i]
+
+        try:
+            location = current_item.location_generated
+            combined_image = imread(location)
+        except IOError:
+            location = current_item.location
+            combined_image = imread(location)
+
+        print 'processing ' + location
+        rgb_image = combined_image[:, 0: combined_image.shape[1]//2, :]
+        depth_image = combined_image[:, combined_image.shape[1]//2: combined_image.shape[1], :]
+
+        rgb_fc7 = alex_net_fc7(sess, input_alex, fc7, [rgb_image])
+        depth_fc7 = alex_net_fc7(sess, input_alex, fc7, [depth_image])
+
+        rgb_file = splitext(split(location)[1])[0] + 'rgb.dat'
+        rgb_file = join(split(saving_path)[0], rgb_file)
+        depth_file = splitext(split(location)[1])[0] + 'depth.dat'
+        depth_file = join(split(saving_path)[0], depth_file)
+
+        np.savetxt(rgb_file, rgb_fc7)
+        np.savetxt(depth_file, depth_fc7)
+
+        rep_data.append({
+            'rgb_rep_location': rgb_file,
+            'depth_rep_location': depth_file,
+            'label': current_item.label,
+            'category': current_item.category,
+            'instance_number': current_item.instance_number,
+            'video_no': current_item.video_no,
+            'frame_no': current_item.frame_no
+        })
+
+    df = pd.DataFrame(rep_data)
+    df.to_csv(saving_path, index=False)
+
+    return df
+
+
+def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
+    gan_test_rep_data = create_washington_representations(gan_test_df, gan_rep_dir)
+    np.random.seed(1000)
+
+    train_binary_network('',
+                         gan_test_rep_data,
+                         50, 20,
+                         model_path,
+                         checkpoint_path,
+                         is_testing=True)
 
 
 if __name__ == '__main__':
     CHECK_POINT = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
+    CHECK_POINT_ORIGINAL_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73'
+    CHECK_POINT_ORIGINAL_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08'
+    CHECK_POINT_ORIGINAL_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36'
+    CHECK_POINT_GAN50_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99'
+    CHECK_POINT_GAN50_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62'
+    CHECK_POINT_GAN50_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14'
     # MODEL_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/fusion-net'
     MODEL_PATH = CHECK_POINT + 'fusion-net'
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
-    # load_batch(pd.read_csv(os.path.join(PROCESSED_PAIR_PATH, 'train_info.csv')))
+    REPRESENTATION_PATH_TRAINING = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/alex_rep_training.csv'
+    REPRESENTATION_PATH_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test/alex_rep_test.csv'
+    REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
+    REPRESENTATION_PATH_GAN_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_test/alex_rep_gan_test.csv'
+    CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
+    GAN_PROCESSED_CSV = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split/processed_images/gan-test-data.csv'
 
-    training_data = pd.read_csv(os.path.join(PROCESSED_PAIR_PATH, 'training_set.csv')).sample(frac=1, random_state=1000)
-    test_data = pd.read_csv(os.path.join(PROCESSED_PAIR_PATH, 'test_set.csv'))
+    training_data = pd.read_csv(GAN_PROCESSED_CSV).sample(frac=1, random_state=1000)
+    test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
-    for i in range(1):
-        accuracy = train_binary_network(training_data,
-                                        test_data,
-                                        50, 20,
-                                        MODEL_PATH,
-                                        CHECK_POINT,
-                                        is_testing=False)
+    training_rep_data = create_washington_representations(training_data, REPRESENTATION_PATH_TRAINING)
+    test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
+    training_rep_gan_50_data = create_washington_representations(training_data, REPRESENTATION_PATH_GAN_TRAIN_50)
 
-        try:
-            with open(os.path.join(CHECK_POINT, 'temp.txt'), 'r') as f:
-                print i + 5
-                content = f.read()
-        except IOError:
-            content = ''
+    # gan_data_descriptions = pd.read_csv(GAN_PROCESSED_CSV)
+    # test_gan_result(gan_data_descriptions, REPRESENTATION_PATH_TEST, MODEL_PATH, CHECK_POINT)
 
-        with open(os.path.join(CHECK_POINT, 'temp.txt'), 'w') as f:
-            f.writelines(content + '\n' + 'acc = ' + str(accuracy))
+     # load_batch(pd.read_csv(join(PROCESSED_PAIR_PATH, 'train_info.csv')))
 
+    np.random.seed(1000)
+    for i in range(1, 2):
+        # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
+        #                                                            , n_sampling_step=i)
+        training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data
+                                                                   , n_sampling_step=i)
+        training_rep_data_lai = training_rep_data_lai.sample(frac=1, random_state=1000)
+
+        g = tf.Graph()
+        with g.as_default():
+            accuracy = train_binary_network(training_rep_data_lai,
+                                            test_rep_data_lai,
+                                            50, 20,
+                                            MODEL_PATH,
+                                            CHECK_POINT,
+                                            is_testing=False)
+
+            try:
+                with open(os.path.join(CHECK_POINT, 'temp.txt'), 'r') as f:
+                    content = f.read()
+            except IOError:
+                content = ''
+
+            with open(os.path.join(CHECK_POINT, 'temp.txt'), 'w') as f:
+                f.writelines(content + '\n' + 'acc = ' + str(accuracy))
+
+        g = None
