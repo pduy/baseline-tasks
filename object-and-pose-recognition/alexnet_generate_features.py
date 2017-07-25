@@ -477,7 +477,7 @@ def restore_model(path, sess):
 
 
 # def create_washington_representations(data_frame, saving_path, generated_portion=0.0):
-def create_washington_representations(data_frame, saving_path):
+def create_washington_representations(data_frame, saving_path, noise_std=0):
     if isfile(saving_path):
         return pd.read_csv(saving_path)
 
@@ -496,13 +496,17 @@ def create_washington_representations(data_frame, saving_path):
         try:
             location = current_item.location_generated
             combined_image = imread(location)
-        except IOError:
+        except (IOError, AttributeError):
             location = current_item.location
             combined_image = imread(location)
 
-        print 'processing ' + location
+        if i % 100 == 0:
+            print str(i * 100.0 / data_frame.shape[0]) + '\% complete'
+
         rgb_image = combined_image[:, 0: combined_image.shape[1]//2, :]
         depth_image = combined_image[:, combined_image.shape[1]//2: combined_image.shape[1], :]
+        noise = np.random.normal(0, noise_std, depth_image.shape)
+        depth_image = depth_image + noise
 
         rgb_fc7 = alex_net_fc7(sess, input_alex, fc7, [rgb_image])
         depth_fc7 = alex_net_fc7(sess, input_alex, fc7, [depth_image])
@@ -544,13 +548,14 @@ def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
 
 
 if __name__ == '__main__':
+    ''' ******************** SETUP ************************'''
     CHECK_POINT = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
-    CHECK_POINT_ORIGINAL_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73'
-    CHECK_POINT_ORIGINAL_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08'
-    CHECK_POINT_ORIGINAL_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36'
-    CHECK_POINT_GAN50_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99'
-    CHECK_POINT_GAN50_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62'
-    CHECK_POINT_GAN50_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14'
+    ORIGINAL_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36']
+    GAN50_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14']
     # MODEL_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/fusion-net'
     MODEL_PATH = CHECK_POINT + 'fusion-net'
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
@@ -559,44 +564,63 @@ if __name__ == '__main__':
     REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
     REPRESENTATION_PATH_GAN_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_test/alex_rep_gan_test.csv'
     CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
-    GAN_PROCESSED_CSV = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split/processed_images/gan-test-data.csv'
+    GAN_PROCESSED_CSV = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split/processed_images/' \
+                        'gan-test-data.csv'
 
-    training_data = pd.read_csv(GAN_PROCESSED_CSV).sample(frac=1, random_state=1000)
+    ''' ******************** NOISE SETUP *******************'''
+    REPRESENTATION_PATH_TRAINING_NOISE = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training_noise/' \
+                                         'alex_rep_training_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise/alex_rep_test_noise.csv'
+
+    ''' ******************* MAIN PROGRAM ********************* '''
+    training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv'))
+    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV).sample(frac=1, random_state=1000)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
-    training_rep_data = create_washington_representations(training_data, REPRESENTATION_PATH_TRAINING)
+    training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
-    training_rep_gan_50_data = create_washington_representations(training_data, REPRESENTATION_PATH_GAN_TRAIN_50)
+    training_rep_gan_50_data = create_washington_representations(training_data_with_gan,
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
 
-    # gan_data_descriptions = pd.read_csv(GAN_PROCESSED_CSV)
-    # test_gan_result(gan_data_descriptions, REPRESENTATION_PATH_TEST, MODEL_PATH, CHECK_POINT)
+    # training_rep_data_noise = create_washington_representations(training_data_without_gan,
+    #                                                             REPRESENTATION_PATH_TRAINING_NOISE,
+    #                                                             noise_std=10)
 
-     # load_batch(pd.read_csv(join(PROCESSED_PAIR_PATH, 'train_info.csv')))
+    for noise_std in [5, 10, 15, 20]:
+        timestamp = time.time()
+        noise_path = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_' + str(timestamp) + '/alex_rep_test_noise.csv'
+        test_rep_data_noise = create_washington_representations(test_data, noise_path, noise_std=noise_std)
 
-    np.random.seed(1000)
-    for i in range(1, 2):
-        # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
-        #                                                            , n_sampling_step=i)
-        training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data
-                                                                   , n_sampling_step=i)
-        training_rep_data_lai = training_rep_data_lai.sample(frac=1, random_state=1000)
+        # gan_data_descriptions = pd.read_csv(GAN_PROCESSED_CSV)
+        # test_gan_result(gan_data_descriptions, REPRESENTATION_PATH_TEST, MODEL_PATH, CHECK_POINT)
+        # load_batch(pd.read_csv(join(PROCESSED_PAIR_PATH, 'train_info.csv')))
 
-        g = tf.Graph()
-        with g.as_default():
-            accuracy = train_binary_network(training_rep_data_lai,
-                                            test_rep_data_lai,
-                                            50, 20,
-                                            MODEL_PATH,
-                                            CHECK_POINT,
-                                            is_testing=False)
+        np.random.seed(1000)
+        for i in range(1, 4):
+            # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
+            #                                                            , n_sampling_step=i)
+            training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data_noise,
+                                                                       n_sampling_step=i)
+            training_rep_data_lai = training_rep_data_lai.sample(frac=1, random_state=1000)
 
-            try:
-                with open(os.path.join(CHECK_POINT, 'temp.txt'), 'r') as f:
-                    content = f.read()
-            except IOError:
-                content = ''
+            g = tf.Graph()
+            with g.as_default():
+                accuracy = train_binary_network(training_rep_data_lai,
+                                                test_rep_data_lai,
+                                                50, 20,
+                                                MODEL_PATH,
+                                                ORIGINAL_CHECK_POINTS[i - 1],
+                                                is_testing=True)
 
-            with open(os.path.join(CHECK_POINT, 'temp.txt'), 'w') as f:
-                f.writelines(content + '\n' + 'acc = ' + str(accuracy))
+                try:
+                    with open(os.path.join(CHECK_POINT, 'temp.txt'), 'r') as f:
+                        content = f.read()
+                except IOError:
+                    content = ''
 
-        g = None
+                with open(os.path.join(CHECK_POINT, 'temp.txt'), 'w') as f:
+                    f.writelines(content + '\n'
+                                 + '#########NOISE = ' + str(noise_std) + '###########' '\n'
+                                 + 'acc = ' + str(accuracy))
+
+            g = None
