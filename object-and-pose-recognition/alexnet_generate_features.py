@@ -371,13 +371,17 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
         if not isdir(split(model_path)[0]):
             os.mkdir(split(model_path)[0])
 
-
         # max_steps = n_epochs * train_df.shape[0] / batch_size
         max_steps = 20000  # set exactly the same as the paper Eitel et. al
         steps_per_epoch = train_df.shape[0] / batch_size
 
         print 'shuffled training data length = %d' % train_df.shape[0]
         print 'test data length = %d' % test_df.shape[0]
+
+        writer = tf.summary.FileWriter(split(model_path)[0], sess.graph)
+        tf.summary.scalar("accuracy", accuracy)
+        tf.summary.scalar("loss", tf.reduce_mean(cross_entropy))
+        summary_op = tf.summary.merge_all()
 
         current_row = 0
         for i in range(max_steps):
@@ -399,12 +403,14 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
                 train_loss = cross_entropy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
                 print '======== train cross entropy = %g' % np.mean(train_loss)
 
-                # tf.summary.scalar("accuracy", accuracy)
-                # tf.summary.scalar("loss", cross_entropy)
                 saver.save(sess, model_path)
 
             # Train the last 2 layers
-            train_step.run(feed_dict={classifier_x: fc_7_fused, y_: labels})
+            # train_step.run(feed_dict={classifier_x: fc_7_fused, y_: labels})
+
+            _, summary = sess.run(fetches=[train_step, summary_op], feed_dict={classifier_x: fc_7_fused, y_: labels})
+            writer.add_summary(summary,
+                               global_step=i)
 
     # Test with the validation set
     n_test_steps = int(np.ceil(test_df.shape[0] * 1.0 / batch_size))
@@ -496,7 +502,7 @@ def create_washington_representations(data_frame, saving_path):
         try:
             location = current_item.location_generated
             combined_image = imread(location)
-        except IOError:
+        except (IOError, AttributeError):
             location = current_item.location
             combined_image = imread(location)
 
@@ -557,29 +563,37 @@ if __name__ == '__main__':
     REPRESENTATION_PATH_TRAINING = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/alex_rep_training.csv'
     REPRESENTATION_PATH_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test/alex_rep_test.csv'
     REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
+    REPRESENTATION_PATH_GAN_TRAIN_75 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_75/alex_rep_gan_train_75.csv'
     REPRESENTATION_PATH_GAN_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_test/alex_rep_gan_test.csv'
     CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
-    GAN_PROCESSED_CSV = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split/processed_images/gan-test-data.csv'
+    GAN_PROCESSED_CSV = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split' \
+                        '/processed_images/gan-test-data.csv'
+    GAN_PROCESSED_CSV_075 = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split-075' \
+                            '/processed_images/gan-test-data.csv'
 
-    training_data = pd.read_csv(GAN_PROCESSED_CSV).sample(frac=1, random_state=1000)
+    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_075).sample(frac=1, random_state=1000)
+    training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv'))\
+        .sample(frac=1, random_state=1000)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
-    training_rep_data = create_washington_representations(training_data, REPRESENTATION_PATH_TRAINING)
+    training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
+    training_rep_data_gan = create_washington_representations(training_data_with_gan,
+                                                              REPRESENTATION_PATH_GAN_TRAIN_75)
+
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
-    training_rep_gan_50_data = create_washington_representations(training_data, REPRESENTATION_PATH_GAN_TRAIN_50)
 
     # gan_data_descriptions = pd.read_csv(GAN_PROCESSED_CSV)
     # test_gan_result(gan_data_descriptions, REPRESENTATION_PATH_TEST, MODEL_PATH, CHECK_POINT)
 
-     # load_batch(pd.read_csv(join(PROCESSED_PAIR_PATH, 'train_info.csv')))
+    # load_batch(pd.read_csv(join(PROCESSED_PAIR_PATH, 'train_info.csv')))
 
     np.random.seed(1000)
-    for i in range(1, 2):
-        # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
+    for i in range(1, 11):
+        # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data_gan, test_rep_data
         #                                                            , n_sampling_step=i)
         training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data
                                                                    , n_sampling_step=i)
-        training_rep_data_lai = training_rep_data_lai.sample(frac=1, random_state=1000)
+        training_rep_data_lai = training_rep_data_lai.sample(frac=0.25, random_state=1000)
 
         g = tf.Graph()
         with g.as_default():
