@@ -337,101 +337,102 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
 def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
                          checkpoint_path='', n_sources=2, is_testing=False):
 
-    n_classes = 51
+    with tf.Session() as sess:
+        n_classes = 51
 
-    classifier_x, y_, fc_class, fc1_fusW = \
-        set_up_network(batch_size, n_sources, n_classes)
+        classifier_x, y_, fc_class, fc1_fusW = \
+            set_up_network(batch_size, n_sources, n_classes)
 
-    correct_prediction = tf.equal(tf.arg_max(y_, 1), tf.arg_max(fc_class, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=fc_class)
-    train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
+        correct_prediction = tf.equal(tf.arg_max(y_, 1), tf.arg_max(fc_class, 1))
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=fc_class)
+        train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
 
-    init = tf.global_variables_initializer()
-    sess = tf.InteractiveSession()
-    sess.run(init)
+        init = tf.global_variables_initializer()
+        # sess = tf.InteractiveSession()
+        sess.run(init)
 
-    saver = tf.train.Saver(max_to_keep=1)
+        saver = tf.train.Saver(max_to_keep=1)
 
-    # tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
-    #               saving_path + "/tuning")
+        # tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
+        #               saving_path + "/tuning")
 
-    if is_testing:
-        restore_model(checkpoint_path, sess)
-    else:
-        timestamp = time.time()
-        parent = split(model_path)[0]
-        file_name = split(model_path)[1]
+        if is_testing:
+            restore_model(checkpoint_path, sess)
+        else:
+            timestamp = time.time()
+            parent = split(model_path)[0]
+            file_name = split(model_path)[1]
 
-        # saving_path = join(split(model_path)[0], "tuning-model")
-        # if not isdir(saving_path):
-        #     os.mkdir(saving_path)
+            # saving_path = join(split(model_path)[0], "tuning-model")
+            # if not isdir(saving_path):
+            #     os.mkdir(saving_path)
 
-        model_path = join(parent, str(timestamp), file_name)
-        if not isdir(split(model_path)[0]):
-            os.mkdir(split(model_path)[0])
+            model_path = join(parent, str(timestamp), file_name)
+            if not isdir(split(model_path)[0]):
+                os.mkdir(split(model_path)[0])
 
 
-        # max_steps = n_epochs * train_df.shape[0] / batch_size
-        max_steps = 20000  # set exactly the same as the paper Eitel et. al
-        steps_per_epoch = train_df.shape[0] / batch_size
+            # max_steps = n_epochs * train_df.shape[0] / batch_size
+            max_steps = 20000  # set exactly the same as the paper Eitel et. al
+            steps_per_epoch = train_df.shape[0] / batch_size
 
-        print 'shuffled training data length = %d' % train_df.shape[0]
-        print 'test data length = %d' % test_df.shape[0]
+            print 'shuffled training data length = %d' % train_df.shape[0]
+            print 'test data length = %d' % test_df.shape[0]
 
+            current_row = 0
+            for i in range(max_steps):
+                # Load the batch metadata
+                batch_df = train_df.iloc[current_row: current_row + batch_size] \
+                    if current_row + batch_size < train_df.shape[0] \
+                    else train_df.iloc[current_row: train_df.shape[0]] \
+                    .append(train_df.iloc[0: current_row + batch_size - train_df.shape[0]])
+
+                current_row = current_row + batch_size if current_row + batch_size < train_df.shape[0] else 0
+
+                # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
+                # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
+                fc_7_fused, labels = load_representations(batch_df)
+
+                if i % (steps_per_epoch/10) == 0:
+                    train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
+                    print 'step %d, training accuracy = %g' % (i, train_accuracy)
+                    train_loss = cross_entropy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
+                    print '======== train cross entropy = %g' % np.mean(train_loss)
+
+                    # tf.summary.scalar("accuracy", accuracy)
+                    # tf.summary.scalar("loss", cross_entropy)
+                    saver.save(sess, model_path)
+
+                # Train the last 2 layers
+                train_step.run(feed_dict={classifier_x: fc_7_fused, y_: labels})
+
+        # Test with the validation set
+        n_test_steps = int(np.ceil(test_df.shape[0] * 1.0 / batch_size))
+
+        accuracies = []
         current_row = 0
-        for i in range(max_steps):
+        for i in range(n_test_steps):
             # Load the batch metadata
-            batch_df = train_df.iloc[current_row: current_row + batch_size] \
-                if current_row + batch_size < train_df.shape[0] \
-                else train_df.iloc[current_row: train_df.shape[0]] \
-                .append(train_df.iloc[0: current_row + batch_size - train_df.shape[0]])
+            batch_df = test_df.iloc[current_row: current_row + batch_size] \
+                if current_row + batch_size < test_df.shape[0] \
+                else test_df.iloc[current_row: test_df.shape[0]] \
+                .append(test_df.iloc[0: current_row + batch_size - test_df.shape[0]])
 
-            current_row = current_row + batch_size if current_row + batch_size < train_df.shape[0] else 0
+            current_row = current_row + batch_size if current_row + batch_size < test_df.shape[0] else 0
 
-            # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
-            # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
             fc_7_fused, labels = load_representations(batch_df)
+            # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
 
-            if i % (steps_per_epoch/10) == 0:
-                train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
-                print 'step %d, training accuracy = %g' % (i, train_accuracy)
-                train_loss = cross_entropy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
-                print '======== train cross entropy = %g' % np.mean(train_loss)
+            current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
 
-                # tf.summary.scalar("accuracy", accuracy)
-                # tf.summary.scalar("loss", cross_entropy)
-                saver.save(sess, model_path)
+            if i % 1000 == 0:
+                print "step %d, %d left, accuracy %g" % (i, n_test_steps - i, current_accuracy)
+            accuracies.append(current_accuracy)
 
-            # Train the last 2 layers
-            train_step.run(feed_dict={classifier_x: fc_7_fused, y_: labels})
+        print "mean accuracy = %g" % np.mean(accuracies)
 
-    # Test with the validation set
-    n_test_steps = int(np.ceil(test_df.shape[0] * 1.0 / batch_size))
-
-    accuracies = []
-    current_row = 0
-    for i in range(n_test_steps):
-        # Load the batch metadata
-        batch_df = test_df.iloc[current_row: current_row + batch_size] \
-            if current_row + batch_size < test_df.shape[0] \
-            else test_df.iloc[current_row: test_df.shape[0]] \
-            .append(test_df.iloc[0: current_row + batch_size - test_df.shape[0]])
-
-        current_row = current_row + batch_size if current_row + batch_size < test_df.shape[0] else 0
-
-        fc_7_fused, labels = load_representations(batch_df)
-        # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
-
-        current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
-
-        if i % 1 == 0:
-            print "step %d, %d left, accuracy %g" % (i, n_test_steps - i, current_accuracy)
-        accuracies.append(current_accuracy)
-
-    print "mean accuracy = %g" % np.mean(accuracies)
-
-    return np.mean(accuracies)
+        return np.mean(accuracies)
 
 
 def lai_et_al_split(train_df, test_df, n_sampling_step=1):
@@ -547,15 +548,96 @@ def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
                          is_testing=True)
 
 
+def test_noise(check_points, noise_values, noise_representation_paths, cv_splits_ids):
+    for noise_std in noise_values:
+        noise_path = noise_representation_paths.get(noise_std)
+        test_rep_data_noise = create_washington_representations(test_data, noise_path, noise_std=noise_std)
+
+        np.random.seed(1000)
+        for i in cv_splits_ids:
+            # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
+            #                                                            , n_sampling_step=i)
+            training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data_noise,
+                                                                       n_sampling_step=i)
+            # training_rep_data_lai = training_rep_data_lai.sample(frac=1, random_state=1000)
+
+            g = tf.Graph()
+            with g.as_default():
+                accuracy = train_binary_network(training_rep_data_lai,
+                                                test_rep_data_lai,
+                                                50, 20,
+                                                MODEL_PATH,
+                                                check_points[i - 1],
+                                                is_testing=True)
+
+                try:
+                    with open(os.path.join(CHECK_POINT, 'temp_noise.txt'), 'r') as f:
+                        content = f.read()
+                except IOError:
+                    content = ''
+
+                with open(os.path.join(CHECK_POINT, 'temp_noise.txt'), 'w') as f:
+                    f.writelines(content + '\n'
+                                 + '#########NOISE = ' + str(noise_std) + '###########' '\n'
+                                 + 'acc = ' + str(accuracy))
+
+            g = None
+
+
 if __name__ == '__main__':
     ''' ******************** SETUP ************************'''
     CHECK_POINT = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
     ORIGINAL_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73',
                              '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36']
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501006822.01',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501020965.52',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501034788.14',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501048397.78',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501061792.24',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501071382.18',
+                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501322224.08']
+    ORIGINAL50_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501704169.08',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501719221.0',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501733384.32',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501747676.16',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501759970.12',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501774962.25',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501790382.02',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501805715.5',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501820628.25',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501834634.46']
+    ORIGINAL25_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501864431.87',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501878615.64',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501893025.35',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501908117.35',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501923776.98',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501939750.07',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501955878.15',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501971928.48',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501987826.51',
+                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1502003200.85']
     GAN50_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99',
                           '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14']
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501230629.62',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501245420.28',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501254398.38',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501266914.77',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501280280.37',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501293636.65',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501362771.74']
+    GAN75_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501525020.02',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501534960.83',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501544851.35',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501554253.67',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501563815.75',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501573647.53',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501587291.71',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501603398.63',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501617806.37',
+                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501632303.08']
+
     # MODEL_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/fusion-net'
     MODEL_PATH = CHECK_POINT + 'fusion-net'
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
@@ -570,7 +652,22 @@ if __name__ == '__main__':
     ''' ******************** NOISE SETUP *******************'''
     REPRESENTATION_PATH_TRAINING_NOISE = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training_noise/' \
                                          'alex_rep_training_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_1502040509.38' \
+                                        '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_20 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_1500971830.71' \
+                                        '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_15 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_1500946855.21' \
+                                        '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_1500941448.43' \
+                                        '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_5 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_1500936026.57' \
+                                       '/alex_rep_test_noise.csv'
+
+    REPRESENTATION_PATH_TEST_NOISES = {5: REPRESENTATION_PATH_TEST_NOISE_5,
+                                       10: REPRESENTATION_PATH_TEST_NOISE_10,
+                                       15: REPRESENTATION_PATH_TEST_NOISE_15,
+                                       20: REPRESENTATION_PATH_TEST_NOISE_20,
+                                       40: REPRESENTATION_PATH_TEST_NOISE_40}
 
     ''' ******************* MAIN PROGRAM ********************* '''
     training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv'))
@@ -582,45 +679,8 @@ if __name__ == '__main__':
     training_rep_gan_50_data = create_washington_representations(training_data_with_gan,
                                                                  REPRESENTATION_PATH_GAN_TRAIN_50)
 
-    # training_rep_data_noise = create_washington_representations(training_data_without_gan,
-    #                                                             REPRESENTATION_PATH_TRAINING_NOISE,
-    #                                                             noise_std=10)
-
-    for noise_std in [5, 10, 15, 20]:
-        timestamp = time.time()
-        noise_path = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_' + str(timestamp) + '/alex_rep_test_noise.csv'
-        test_rep_data_noise = create_washington_representations(test_data, noise_path, noise_std=noise_std)
-
-        # gan_data_descriptions = pd.read_csv(GAN_PROCESSED_CSV)
-        # test_gan_result(gan_data_descriptions, REPRESENTATION_PATH_TEST, MODEL_PATH, CHECK_POINT)
-        # load_batch(pd.read_csv(join(PROCESSED_PAIR_PATH, 'train_info.csv')))
-
-        np.random.seed(1000)
-        for i in range(1, 4):
-            # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
-            #                                                            , n_sampling_step=i)
-            training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data_noise,
-                                                                       n_sampling_step=i)
-            training_rep_data_lai = training_rep_data_lai.sample(frac=1, random_state=1000)
-
-            g = tf.Graph()
-            with g.as_default():
-                accuracy = train_binary_network(training_rep_data_lai,
-                                                test_rep_data_lai,
-                                                50, 20,
-                                                MODEL_PATH,
-                                                ORIGINAL_CHECK_POINTS[i - 1],
-                                                is_testing=True)
-
-                try:
-                    with open(os.path.join(CHECK_POINT, 'temp.txt'), 'r') as f:
-                        content = f.read()
-                except IOError:
-                    content = ''
-
-                with open(os.path.join(CHECK_POINT, 'temp.txt'), 'w') as f:
-                    f.writelines(content + '\n'
-                                 + '#########NOISE = ' + str(noise_std) + '###########' '\n'
-                                 + 'acc = ' + str(accuracy))
-
-            g = None
+    # test_noise(ORIGINAL_CHECK_POINTS, [20, 40], REPRESENTATION_PATH_TEST_NOISES, range(4, 11))
+    test_noise(GAN50_CHECK_POINTS, [10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(4, 11))
+    test_noise(GAN75_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(1, 11))
+    test_noise(ORIGINAL50_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(1, 11))
+    test_noise(ORIGINAL25_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(1, 11))
