@@ -478,7 +478,7 @@ def restore_model(path, sess):
 
 
 # def create_washington_representations(data_frame, saving_path, generated_portion=0.0):
-def create_washington_representations(data_frame, saving_path, noise_std=0):
+def create_washington_representations(data_frame, saving_path, noise_std=0, noise_in_rgb=False, noise_in_depth=False):
     if isfile(saving_path):
         return pd.read_csv(saving_path)
 
@@ -507,7 +507,10 @@ def create_washington_representations(data_frame, saving_path, noise_std=0):
         rgb_image = combined_image[:, 0: combined_image.shape[1]//2, :]
         depth_image = combined_image[:, combined_image.shape[1]//2: combined_image.shape[1], :]
         noise = np.random.normal(0, noise_std, depth_image.shape)
-        depth_image = depth_image + noise
+        if noise_in_rgb:
+            rgb_image = rgb_image + noise
+        if noise_in_depth:
+            depth_image = depth_image + noise
 
         rgb_fc7 = alex_net_fc7(sess, input_alex, fc7, [rgb_image])
         depth_fc7 = alex_net_fc7(sess, input_alex, fc7, [depth_image])
@@ -551,7 +554,11 @@ def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
 def test_noise(check_points, noise_values, noise_representation_paths, cv_splits_ids):
     for noise_std in noise_values:
         noise_path = noise_representation_paths.get(noise_std)
-        test_rep_data_noise = create_washington_representations(test_data, noise_path, noise_std=noise_std)
+        test_rep_data_noise = create_washington_representations(test_data,
+                                                                noise_path,
+                                                                noise_std=noise_std,
+                                                                noise_in_rgb=True,
+                                                                noise_in_depth=False)
 
         np.random.seed(1000)
         for i in cv_splits_ids:
@@ -582,6 +589,22 @@ def test_noise(check_points, noise_values, noise_representation_paths, cv_splits
                                  + 'acc = ' + str(accuracy))
 
             g = None
+
+
+def merge_rgb_noises_with_depth_noises(rgb_noise_paths, depth_noise_paths, saving_paths):
+    # build a new dataset
+    for noise_std in [5, 10, 15, 20, 40]:
+        rgb_path = rgb_noise_paths.get(noise_std)
+        depth_path = depth_noise_paths.get(noise_std)
+        saving_path = saving_paths.get(noise_std)
+
+        rgb_df = pd.read_csv(rgb_path)
+        depth_df = pd.read_csv(depth_path)
+
+        rgb_df.drop('depth_rep_location', 1)
+        rgb_df['depth_rep_location'] = pd.Series(depth_df.depth_rep_location, index=rgb_df.index)
+
+        rgb_df.to_csv(saving_path, index=False)
 
 
 if __name__ == '__main__':
@@ -663,24 +686,62 @@ if __name__ == '__main__':
     REPRESENTATION_PATH_TEST_NOISE_5 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_1500936026.57' \
                                        '/alex_rep_test_noise.csv'
 
+    REPRESENTATION_PATH_TEST_NOISE_RGB_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_40' \
+                                            '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_20 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_20' \
+                                            '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_15 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_15' \
+                                            '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_10' \
+                                            '/alex_rep_test_noise.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_5 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_5' \
+                                           '/alex_rep_test_noise.csv'
+
+    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
+                                                  '/alex_rep_test_rgb_depth_noise_40.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_20 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
+                                                  '/alex_rep_test_rgb_depth_noise_20.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_15 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
+                                                  '/alex_rep_test_rgb_depth_noise_15.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
+                                                  '/alex_rep_test_rgb_depth_noise_10.csv'
+    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_5 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/' \
+                                                 '/alex_rep_test_rgb_depth_noise_5.csv'
+
     REPRESENTATION_PATH_TEST_NOISES = {5: REPRESENTATION_PATH_TEST_NOISE_5,
                                        10: REPRESENTATION_PATH_TEST_NOISE_10,
                                        15: REPRESENTATION_PATH_TEST_NOISE_15,
                                        20: REPRESENTATION_PATH_TEST_NOISE_20,
                                        40: REPRESENTATION_PATH_TEST_NOISE_40}
 
+    REPRESENTATION_PATH_TEST_RGB_NOISES = {5: REPRESENTATION_PATH_TEST_NOISE_RGB_5,
+                                           10: REPRESENTATION_PATH_TEST_NOISE_RGB_10,
+                                           15: REPRESENTATION_PATH_TEST_NOISE_RGB_15,
+                                           20: REPRESENTATION_PATH_TEST_NOISE_RGB_20,
+                                           40: REPRESENTATION_PATH_TEST_NOISE_RGB_40}
+
+    REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES = {5: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_5,
+                                                 10: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_10,
+                                                 15: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_15,
+                                                 20: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_20,
+                                                 40: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_40}
+
     ''' ******************* MAIN PROGRAM ********************* '''
-    training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv'))
-    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV).sample(frac=1, random_state=1000)
-    test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
+    # training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv'))
+    # training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV).sample(frac=1, random_state=1000)
+    # test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
+    #
+    # training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
+    # test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
+    # training_rep_gan_50_data = create_washington_representations(training_data_with_gan,
+    #                                                              REPRESENTATION_PATH_GAN_TRAIN_50)
+    #
+    # test_noise(ORIGINAL_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_NOISES, range(1, 4))
+    # test_noise(GAN50_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_NOISES, range(1, 4))
+    # test_noise(GAN75_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_NOISES, range(1, 4))
+    # test_noise(ORIGINAL50_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_NOISES, range(1, 4))
+    # test_noise(ORIGINAL25_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_NOISES, range(1, 4))
 
-    training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
-    test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
-    training_rep_gan_50_data = create_washington_representations(training_data_with_gan,
-                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
-
-    # test_noise(ORIGINAL_CHECK_POINTS, [20, 40], REPRESENTATION_PATH_TEST_NOISES, range(4, 11))
-    test_noise(GAN50_CHECK_POINTS, [10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(4, 11))
-    test_noise(GAN75_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(1, 11))
-    test_noise(ORIGINAL50_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(1, 11))
-    test_noise(ORIGINAL25_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_NOISES, range(1, 11))
+    merge_rgb_noises_with_depth_noises(REPRESENTATION_PATH_TEST_RGB_NOISES,
+                                       REPRESENTATION_PATH_TEST_NOISES,
+                                       REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES)
