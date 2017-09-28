@@ -550,17 +550,23 @@ def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
                          is_testing=True)
 
 
-def test_noise(check_points, noise_values, noise_representation_paths, cv_splits_ids):
-    for noise_std in noise_values:
-        noise_path = noise_representation_paths.get(noise_std)
-        test_rep_data_noise = create_washington_representations(data_frame=test_data,
-                                                                saving_path=noise_path,
-                                                                noise_std=noise_std,
-                                                                noise_in_rgb=True,
-                                                                noise_in_depth=False)
+def test_noise(check_points, noise_values, noise_representation_paths, cv_splits_ids, noise_rgb, noise_depth):
+    base_check_point = os.path.split(check_points[0])[0]
+    for j in range(len(noise_values)):
+        noise_std = noise_values[j]
+        noise_path = noise_representation_paths[j]
+
+        with open(os.path.join(base_check_point, 'temp_noise.txt'), 'a+') as f:
+            f.writelines('#########NOISE = ' + str(noise_std) + '########### \n')
 
         np.random.seed(1000)
         for i in cv_splits_ids:
+            test_rep_data_noise = create_washington_representations(data_frame=test_data,
+                                                                    saving_path=noise_path,
+                                                                    noise_std=noise_std,
+                                                                    noise_in_rgb=noise_rgb,
+                                                                    noise_in_depth=noise_depth)
+
             # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
             #                                                            , n_sampling_step=i)
             training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data_noise,
@@ -573,37 +579,49 @@ def test_noise(check_points, noise_values, noise_representation_paths, cv_splits
                                                 test_rep_data_lai,
                                                 50, 20,
                                                 MODEL_PATH,
-                                                check_points[i - 1],
+                                                os.path.join(check_points[i - 1]),
                                                 is_testing=True)
 
-                try:
-                    with open(os.path.join(CHECK_POINT, 'temp_noise.txt'), 'r') as f:
-                        content = f.read()
-                except IOError:
-                    content = ''
-
-                with open(os.path.join(CHECK_POINT, 'temp_noise.txt'), 'w') as f:
-                    f.writelines(content + '\n'
-                                 + '#########NOISE = ' + str(noise_std) + '###########' '\n'
-                                 + 'acc = ' + str(accuracy))
+                with open(os.path.join(base_check_point, 'temp_noise.txt'), 'a+') as f:
+                    f.writelines('acc = ' + str(accuracy) + '\n')
 
             g = None
 
 
 def test_noise_script():
-    test_noise(ORIGINAL_CHECK_POINTS,   [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES, range(1, 4))
-    test_noise(GAN50_CHECK_POINTS,      [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES, range(1, 4))
-    test_noise(GAN75_CHECK_POINTS,      [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES, range(1, 4))
-    test_noise(ORIGINAL50_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES, range(1, 4))
-    test_noise(ORIGINAL25_CHECK_POINTS, [5, 10, 15, 20, 40], REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES, range(1, 4))
+    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=False, noise_depth=True)
+    test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=False, noise_depth=True)
+    test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=False, noise_depth=True)
+    test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=False, noise_depth=True)
+    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=False, noise_depth=True)
+    test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=False, noise_depth=True)
+    test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=False, noise_depth=True)
+
+    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=False)
+    test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=False)
+    test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=False)
+    test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=False)
+    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=False)
+    test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=False)
+    test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=False)
+
+    merge_rgb_noises_with_depth_noises(REPRESENTATION_RGB_NOISE_TEST_PATHS, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS)
+
+    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4), noise_rgb=True, noise_depth=True)
 
 
 def merge_rgb_noises_with_depth_noises(rgb_noise_paths, depth_noise_paths, saving_paths):
     # build a new dataset
-    for noise_std in [5, 10, 15, 20, 40]:
-        rgb_path = rgb_noise_paths.get(noise_std)
-        depth_path = depth_noise_paths.get(noise_std)
-        saving_path = saving_paths.get(noise_std)
+    for i in range(len(NOISES)):
+        rgb_path = rgb_noise_paths[i]
+        depth_path = depth_noise_paths[i]
+        saving_path = saving_paths[i]
 
         rgb_df = pd.read_csv(rgb_path)
         depth_df = pd.read_csv(depth_path)
@@ -624,134 +642,35 @@ def test_train_and_test_split(train_df, test_df):
 
 if __name__ == '__main__':
     ''' ******************** SETUP ************************'''
-    CHECK_POINT = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
-    CHECK_POINT_100 = os.path.join(CHECK_POINT, '100-0')
-    ORIGINAL_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501006822.01',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501020965.52',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501034788.14',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501048397.78',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501061792.24',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501071382.18',
-                             '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501322224.08']
-    ORIGINAL50_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501704169.08',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501719221.0',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501733384.32',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501747676.16',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501759970.12',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501774962.25',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501790382.02',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501805715.5',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501820628.25',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501834634.46']
-    ORIGINAL25_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501864431.87',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501878615.64',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501893025.35',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501908117.35',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501923776.98',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501939750.07',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501955878.15',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501971928.48',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501987826.51',
-                               '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1502003200.85']
-    GAN50_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501230629.62',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501245420.28',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501254398.38',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501266914.77',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501280280.37',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501293636.65',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501362771.74']
-    GAN75_CHECK_POINTS = ['/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501525020.02',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501534960.83',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501544851.35',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501554253.67',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501563815.75',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501573647.53',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501587291.71',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501603398.63',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501617806.37',
-                          '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1501632303.08']
+    BASE_CHECK_POINT = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
+    CHECK_POINTS_100 = [os.path.join(BASE_CHECK_POINT, '100-0', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_50 = [os.path.join(BASE_CHECK_POINT, '50-0', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_25 = [os.path.join(BASE_CHECK_POINT, '25-0', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_10 = [os.path.join(BASE_CHECK_POINT, '10-0', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_50_50 = [os.path.join(BASE_CHECK_POINT, '50-50', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_25_75 = [os.path.join(BASE_CHECK_POINT, '25-75', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_10_90 = [os.path.join(BASE_CHECK_POINT, '10-90', 'iter_' + str(i)) for i in range(1, 11)]
 
     # MODEL_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/fusion-net'
-    MODEL_PATH = CHECK_POINT + 'fusion-net'
+    MODEL_PATH = BASE_CHECK_POINT + 'fusion-net'
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
     REPRESENTATION_PATH_TRAINING = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/alex_rep_training.csv'
-    REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
-    REPRESENTATION_PATH_GAN_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_test/alex_rep_gan_test.csv'
-    CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
-    GAN_PROCESSED_CSV = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-50-test/processed-images/' \
-                        'gan-test-data.csv'
 
-    ''' ******************** NOISE SETUP *******************'''
-    REPRESENTATION_PATH_TRAINING_NOISE = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training_noise/' \
-                                         'alex_rep_training_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_DEPTH_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_depth_40' \
-                                              '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_DEPTH_20 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_depth_20' \
-                                              '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_DEPTH_15 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_depth_15' \
-                                              '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_DEPTH_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_depth_10' \
-                                              '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_DEPTH_5 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_depth_5' \
-                                             '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_0 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test' \
-                                       '/alex_rep_test_noise.csv'
-
-    REPRESENTATION_PATH_TEST_NOISE_RGB_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_40' \
-                                            '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_20 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_20' \
-                                            '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_15 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_15' \
-                                            '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_10' \
-                                            '/alex_rep_test_noise.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_5 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_noise_rgb_5' \
-                                           '/alex_rep_test_noise.csv'
-
-    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
-                                                  '/alex_rep_test_rgb_depth_noise_40.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_20 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
-                                                  '/alex_rep_test_rgb_depth_noise_20.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_15 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
-                                                  '/alex_rep_test_rgb_depth_noise_15.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep' \
-                                                  '/alex_rep_test_rgb_depth_noise_10.csv'
-    REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_5 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/' \
-                                                 '/alex_rep_test_rgb_depth_noise_5.csv'
-
-    REPRESENTATION_PATH_TEST_DEPTH_NOISES = {0: REPRESENTATION_PATH_TEST_NOISE_0,
-                                             5: REPRESENTATION_PATH_TEST_NOISE_DEPTH_5,
-                                             10: REPRESENTATION_PATH_TEST_NOISE_DEPTH_10,
-                                             15: REPRESENTATION_PATH_TEST_NOISE_DEPTH_15,
-                                             20: REPRESENTATION_PATH_TEST_NOISE_DEPTH_20,
-                                             40: REPRESENTATION_PATH_TEST_NOISE_DEPTH_40}
-
-    REPRESENTATION_PATH_TEST_RGB_NOISES = {5: REPRESENTATION_PATH_TEST_NOISE_RGB_5,
-                                           10: REPRESENTATION_PATH_TEST_NOISE_RGB_10,
-                                           15: REPRESENTATION_PATH_TEST_NOISE_RGB_15,
-                                           20: REPRESENTATION_PATH_TEST_NOISE_RGB_20,
-                                           40: REPRESENTATION_PATH_TEST_NOISE_RGB_40}
-
-    REPRESENTATION_PATH_TEST_RGB_DEPTH_NOISES = {5: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_5,
-                                                 10: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_10,
-                                                 15: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_15,
-                                                 20: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_20,
-                                                 40: REPRESENTATION_PATH_TEST_NOISE_RGB_DEPTH_40}
+    ''' ******************** NOISE ALEX_REPRESENTATION SETUP *******************'''
+    NOISES = [5, 10, 15, 20, 40]
+    BASE_REPRESENTATION = '/mnt/raid/data/ni/dnn/pduy/alex_rep/'
+    REPRESENTATION_DEPTH_NOISE_TEST_PATHS = [os.path.join(BASE_REPRESENTATION, 'test_noise_depth_' + str(i),
+                                                          'alex_rep_test_noise.csv')
+                                             for i in NOISES]
+    REPRESENTATION_RGB_NOISE_TEST_PATHS = [os.path.join(BASE_REPRESENTATION, 'test_noise_rgb_' + str(i),
+                                                        'alex_rep_test_noise.csv')
+                                           for i in NOISES]
+    REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS = [os.path.join(BASE_REPRESENTATION,
+                                                              'alex_rep_test_rgb_depth_noise_' + str(i) + '.csv')
+                                                 for i in NOISES]
 
     ''' ******************* MAIN PROGRAM ********************* '''
-    training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv'))
-    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV).sample(frac=1, random_state=1000)
+    training_rep_data = pd.read_csv(REPRESENTATION_PATH_TRAINING)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
-    training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
-    test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST_NOISE_0)
-    training_rep_gan_50_data = create_washington_representations(training_data_with_gan,
-                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
-
-    train_binary_network(training_rep_data, test_rep_data, 50, 20, MODEL_PATH)
+    test_noise_script()
