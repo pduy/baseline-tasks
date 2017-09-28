@@ -334,7 +334,7 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
             train_step_depth2.run(feed_dict={input_alex_depth: depths, y_depth: labels})
 
 
-def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
+def train_binary_network(train_df, test_df, batch_size, n_epochs,
                          checkpoint_path='', n_sources=2, is_testing=False):
 
     n_classes = 51
@@ -359,17 +359,17 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
     if is_testing:
         restore_model(checkpoint_path, sess)
     else:
-        timestamp = time.time()
-        parent = split(model_path)[0]
-        file_name = split(model_path)[1]
+        # timestamp = time.time()
+        # parent = split(model_path)[0]
+        # file_name = split(model_path)[1]
 
         # saving_path = join(split(model_path)[0], "tuning-model")
         # if not isdir(saving_path):
         #     os.mkdir(saving_path)
 
-        model_path = join(parent, str(timestamp), file_name)
+        model_path = join(checkpoint_path, 'fusion-net')
         if not isdir(split(model_path)[0]):
-            os.mkdir(split(model_path)[0])
+            os.makedirs(split(model_path)[0])
 
         # max_steps = n_epochs * train_df.shape[0] / batch_size
         max_steps = 20000  # set exactly the same as the paper Eitel et. al
@@ -549,68 +549,96 @@ def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
                          is_testing=True)
 
 
+def train_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoint_to_save):
+    training_split_lai, test_split_lai = lai_et_al_split(train_df, test_df, n_sampling_step=split_index)
+
+    sampled_training = training_split_lai.sample(frac=data_fraction, random_state=1000)
+
+    g = tf.Graph()
+    with g.as_default():
+        test_accuracy = train_binary_network(sampled_training,
+                                             test_split_lai,
+                                             50, 20,
+                                             join(checkpoint_to_save, 'iter_' + str(i)),
+                                             is_testing=False)
+
+        with open(os.path.join(checkpoint_to_save, 'temp.txt'), 'a+') as f:
+            f.writelines('acc = ' + str(test_accuracy) + '\n')
+
+    g = None
+
+
 if __name__ == '__main__':
-    CHECK_POINT = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
-    CHECK_POINT_ORIGINAL_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73'
-    CHECK_POINT_ORIGINAL_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08'
-    CHECK_POINT_ORIGINAL_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36'
-    CHECK_POINT_GAN50_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99'
-    CHECK_POINT_GAN50_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62'
-    CHECK_POINT_GAN50_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14'
+    # CHECK_POINT_ORIGINAL_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73'
+    # CHECK_POINT_ORIGINAL_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08'
+    # CHECK_POINT_ORIGINAL_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36'
+    # CHECK_POINT_GAN50_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99'
+    # CHECK_POINT_GAN50_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62'
+    # CHECK_POINT_GAN50_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14'
     # MODEL_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/fusion-net'
-    MODEL_PATH = CHECK_POINT + 'fusion-net'
+    # MODEL_PATH = CHECK_POINT + 'fusion-net'
+    # REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
+    # REPRESENTATION_PATH_GAN_TRAIN_75 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_75/alex_rep_gan_train_75.csv'
+    # REPRESENTATION_PATH_GAN_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_test/alex_rep_gan_test.csv'
+    # GAN_PROCESSED_CSV_075 = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split-075' \
+    #                         '/processed_images/gan-test-data.csv'
+
+    CHECK_POINT_BASE = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
+
+    CHECK_POINT_100 = join(CHECK_POINT_BASE, '100-0')
+    CHECK_POINT_50 = join(CHECK_POINT_BASE, '50-0')
+    CHECK_POINT_25 = join(CHECK_POINT_BASE, '25-0')
+    CHECK_POINT_10 = join(CHECK_POINT_BASE, '10-0')
+    CHECK_POINT_10_90 = join(CHECK_POINT_BASE, '10-90')
+    CHECK_POINT_25_75 = join(CHECK_POINT_BASE, '25-75')
+    CHECK_POINT_50_50 = join(CHECK_POINT_BASE, '50-50')
+
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
     REPRESENTATION_PATH_TRAINING = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/alex_rep_training.csv'
     REPRESENTATION_PATH_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test/alex_rep_test.csv'
     REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
-    REPRESENTATION_PATH_GAN_TRAIN_75 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_75/alex_rep_gan_train_75.csv'
-    REPRESENTATION_PATH_GAN_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_test/alex_rep_gan_test.csv'
-    CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
-    GAN_PROCESSED_CSV = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split' \
-                        '/processed_images/gan-test-data.csv'
-    GAN_PROCESSED_CSV_075 = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split-075' \
-                            '/processed_images/gan-test-data.csv'
+    REPRESENTATION_PATH_GAN_TRAIN_25 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_25/alex_rep_gan_train_25.csv'
+    REPRESENTATION_PATH_GAN_TRAIN_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_10/alex_rep_gan_train_10.csv'
 
-    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_075).sample(frac=1, random_state=1000)
-    training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv'))\
+    CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
+    GAN_PROCESSED_CSV_50 = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-50-test/processed-images' \
+                           '/gan-test-data.csv'
+    GAN_PROCESSED_CSV_25 = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-25-test/processed-images' \
+                           '/gan-test-data.csv'
+    GAN_PROCESSED_CSV_10 = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-10-test/processed-images' \
+                           '/gan-test-data.csv'
+
+    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_10).sample(frac=1, random_state=1000)
+    training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv')) \
         .sample(frac=1, random_state=1000)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
     training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
-    training_rep_data_gan = create_washington_representations(training_data_with_gan,
-                                                              REPRESENTATION_PATH_GAN_TRAIN_75)
+    training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
+    training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_25)
+    training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_10)
 
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
-    # gan_data_descriptions = pd.read_csv(GAN_PROCESSED_CSV)
-    # test_gan_result(gan_data_descriptions, REPRESENTATION_PATH_TEST, MODEL_PATH, CHECK_POINT)
+    for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1], [CHECK_POINT_100,
+                                                                                       CHECK_POINT_50,
+                                                                                       CHECK_POINT_25,
+                                                                                       CHECK_POINT_10,
+                                                                                       CHECK_POINT_50_50,
+                                                                                       CHECK_POINT_25_75,
+                                                                                       CHECK_POINT_10_90],
+                                                        [training_rep_data,
+                                                         training_rep_data,
+                                                         training_rep_data,
+                                                         training_rep_data,
+                                                         training_rep_data_gan_50,
+                                                         training_rep_data_gan_25,
+                                                         training_rep_data_gan_10]):
+        np.random.seed(1000)
+        for i in range(4, 10):
+            train_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i, data_fraction=fraction,
+                                 checkpoint_to_save=checkpoint_path)
 
-    # load_batch(pd.read_csv(join(PROCESSED_PAIR_PATH, 'train_info.csv')))
-
-    np.random.seed(1000)
-    for i in range(1, 11):
-        # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data_gan, test_rep_data
-        #                                                            , n_sampling_step=i)
-        training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data
-                                                                   , n_sampling_step=i)
-        training_rep_data_lai = training_rep_data_lai.sample(frac=0.25, random_state=1000)
-
-        g = tf.Graph()
-        with g.as_default():
-            accuracy = train_binary_network(training_rep_data_lai,
-                                            test_rep_data_lai,
-                                            50, 20,
-                                            MODEL_PATH,
-                                            CHECK_POINT,
-                                            is_testing=False)
-
-            try:
-                with open(os.path.join(CHECK_POINT, 'temp.txt'), 'r') as f:
-                    content = f.read()
-            except IOError:
-                content = ''
-
-            with open(os.path.join(CHECK_POINT, 'temp.txt'), 'w') as f:
-                f.writelines(content + '\n' + 'acc = ' + str(accuracy))
-
-        g = None
