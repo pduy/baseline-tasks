@@ -222,7 +222,7 @@ def fuse_batch_only_rgb(dataframe, sess, input_alex, fc7):
     return fc7_rgb, labels
 
 
-def load_representations(data_frame):
+def load_representations(data_frame, use_depth=True):
     reps = []
     labels = []
     for i in range(data_frame.shape[0]):
@@ -235,10 +235,13 @@ def load_representations(data_frame):
         labels.append(label)
 
         rgb_vector = np.loadtxt(rgb_file)
-        depth_vector = np.loadtxt(depth_file)
 
-        rep = np.concatenate([rgb_vector, depth_vector], axis=0)
-        reps.append(rep)
+        if use_depth:
+            depth_vector = np.loadtxt(depth_file)
+            rep = np.concatenate([rgb_vector, depth_vector], axis=0)
+            reps.append(rep)
+        else:
+            reps.append(rgb_vector)
 
     return np.array(reps), np.array(labels)
 
@@ -347,6 +350,8 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=fc_class)
     train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
 
+    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
+    # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
     init = tf.global_variables_initializer()
     sess = tf.InteractiveSession()
     sess.run(init)
@@ -371,8 +376,8 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
         if not isdir(split(model_path)[0]):
             os.makedirs(split(model_path)[0])
 
-        # max_steps = n_epochs * train_df.shape[0] / batch_size
-        max_steps = 20000  # set exactly the same as the paper Eitel et. al
+        max_steps = n_epochs * train_df.shape[0] / batch_size
+        # max_steps = 20000  # set exactly the same as the paper Eitel et. al
         steps_per_epoch = train_df.shape[0] / batch_size
 
         print 'shuffled training data length = %d' % train_df.shape[0]
@@ -395,7 +400,10 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
             # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
             # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
-            fc_7_fused, labels = load_representations(batch_df)
+            if n_sources == 2:
+                fc_7_fused, labels = load_representations(batch_df)
+            else:
+                fc_7_fused, labels = load_representations(batch_df, use_depth=False)
 
             if i % (steps_per_epoch/10) == 0:
                 train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
@@ -426,12 +434,15 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
         current_row = current_row + batch_size if current_row + batch_size < test_df.shape[0] else 0
 
-        fc_7_fused, labels = load_representations(batch_df)
+        if n_sources == 2:
+            fc_7_fused, labels = load_representations(batch_df)
+        else:
+            fc_7_fused, labels = load_representations(batch_df, use_depth=False)
         # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
 
         current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
 
-        if i % 1 == 0:
+        if i % 500 == 0:
             print "step %d, %d left, accuracy %g" % (i, n_test_steps - i, current_accuracy)
         accuracies.append(current_accuracy)
 
@@ -440,7 +451,8 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
     return np.mean(accuracies)
 
 
-def lai_et_al_split(train_df, test_df, n_sampling_step=1):
+def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
+    np.random.seed(seed)
     categories = np.sort(np.unique(train_df.category))
 
     # new_train_df = pd.DataFrame(columns=list(train_df))
@@ -558,11 +570,12 @@ def train_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoi
     with g.as_default():
         test_accuracy = train_binary_network(sampled_training,
                                              test_split_lai,
-                                             50, 20,
+                                             100, 8,
                                              join(checkpoint_to_save, 'iter_' + str(i)),
+                                             n_sources=2,
                                              is_testing=False)
 
-        with open(os.path.join(checkpoint_to_save, 'temp.txt'), 'a+') as f:
+        with open(os.path.join(checkpoint_to_save, 'temp_8_epochs.txt'), 'a+') as f:
             f.writelines('acc = ' + str(test_accuracy) + '\n')
 
     g = None
@@ -592,6 +605,11 @@ if __name__ == '__main__':
     CHECK_POINT_10_90 = join(CHECK_POINT_BASE, '10-90')
     CHECK_POINT_25_75 = join(CHECK_POINT_BASE, '25-75')
     CHECK_POINT_50_50 = join(CHECK_POINT_BASE, '50-50')
+
+    CHECK_POINT_100_RGB_ONLY = join(CHECK_POINT_BASE, '100-0-rgb')
+    CHECK_POINT_50_RGB_ONLY = join(CHECK_POINT_BASE, '50-0-rgb')
+    CHECK_POINT_25_RGB_ONLY = join(CHECK_POINT_BASE, '25-0-rgb')
+    CHECK_POINT_10_RGB_ONLY = join(CHECK_POINT_BASE, '10-0-rgb')
 
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
     REPRESENTATION_PATH_TRAINING = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/alex_rep_training.csv'
@@ -623,22 +641,31 @@ if __name__ == '__main__':
 
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
-    for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1], [CHECK_POINT_100,
-                                                                                       CHECK_POINT_50,
-                                                                                       CHECK_POINT_25,
-                                                                                       CHECK_POINT_10,
-                                                                                       CHECK_POINT_50_50,
-                                                                                       CHECK_POINT_25_75,
-                                                                                       CHECK_POINT_10_90],
-                                                        [training_rep_data,
-                                                         training_rep_data,
-                                                         training_rep_data,
-                                                         training_rep_data,
-                                                         training_rep_data_gan_50,
-                                                         training_rep_data_gan_25,
-                                                         training_rep_data_gan_10]):
-        np.random.seed(1000)
-        for i in range(4, 10):
-            train_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i, data_fraction=fraction,
+    # script for training with all the combinations we have using both rgb and depth data
+    for i in range(4, 6):
+        for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1], [CHECK_POINT_100,
+                                                                                           CHECK_POINT_50,
+                                                                                           CHECK_POINT_25,
+                                                                                           CHECK_POINT_10,
+                                                                                           CHECK_POINT_50_50,
+                                                                                           CHECK_POINT_25_75,
+                                                                                           CHECK_POINT_10_90],
+                                                            [training_rep_data,
+                                                             training_rep_data,
+                                                             training_rep_data,
+                                                             training_rep_data,
+                                                             training_rep_data_gan_50,
+                                                             training_rep_data_gan_25,
+                                                             training_rep_data_gan_10]):
+            # Train with only rgb
+            # for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1], [CHECK_POINT_100_RGB_ONLY,
+            #                                                                           CHECK_POINT_50_RGB_ONLY,
+            #                                                                           CHECK_POINT_25_RGB_ONLY,
+            #                                                                           CHECK_POINT_10_RGB_ONLY],
+            #                                                     [training_rep_data,
+            #                                                      training_rep_data,
+            #                                                      training_rep_data,
+            #                                                      training_rep_data]):
+            train_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i,
+                                 data_fraction=fraction,
                                  checkpoint_to_save=checkpoint_path)
-
