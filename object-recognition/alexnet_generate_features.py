@@ -352,8 +352,9 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
     # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     init = tf.global_variables_initializer()
-    sess = tf.InteractiveSession()
+    sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
     sess.run(init)
 
     saver = tf.train.Saver(max_to_keep=1)
@@ -549,6 +550,32 @@ def create_washington_representations(data_frame, saving_path):
     return df
 
 
+def get_incomplete_gan_training_data(rep_df, portion):
+    gan_list = os.listdir('/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-50-test/processed-images')
+    marks = []
+    for i in range(rep_df.shape[0]):
+        current_item = rep_df.iloc[i]
+        name = '_'.join([current_item.category, str(int(current_item.instance_number)), 
+                        str(int(current_item.video_no)), str(int(current_item.frame_no)), 'crop-inputs']) \
+                    + '.png'
+        if name in gan_list:
+            print 'file %s exists in GAN data' % name
+            current_mark = 1
+        else:
+            #print 'file %s doesn''t exist' % name
+            current_mark = 0
+
+        marks.append(current_mark)
+
+    rep_df['origin'] = pd.Series(marks)
+
+    original_data = rep_df[rep_df.origin == 0]
+    gan_data = rep_df[rep_df.origin == 1]
+    gan_data = gan_data.sample(frac=portion, random_state=2000)
+
+    return original_data.append(gan_data).sample(frac=1, random_state=1000)
+
+
 def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
     gan_test_rep_data = create_washington_representations(gan_test_df, gan_rep_dir)
     np.random.seed(1000)
@@ -605,6 +632,9 @@ if __name__ == '__main__':
     CHECK_POINT_10_90 = join(CHECK_POINT_BASE, '10-90')
     CHECK_POINT_25_75 = join(CHECK_POINT_BASE, '25-75')
     CHECK_POINT_50_50 = join(CHECK_POINT_BASE, '50-50')
+    CHECK_POINT_50_20 = join(CHECK_POINT_BASE, '50-20')
+    CHECK_POINT_50_30 = join(CHECK_POINT_BASE, '50-30')
+    CHECK_POINT_50_40 = join(CHECK_POINT_BASE, '50-40')
 
     CHECK_POINT_100_RGB_ONLY = join(CHECK_POINT_BASE, '100-0-rgb')
     CHECK_POINT_50_RGB_ONLY = join(CHECK_POINT_BASE, '50-0-rgb')
@@ -626,7 +656,7 @@ if __name__ == '__main__':
     GAN_PROCESSED_CSV_10 = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-10-test/processed-images' \
                            '/gan-test-data.csv'
 
-    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_10).sample(frac=1, random_state=1000)
+    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_50).sample(frac=1, random_state=1000)
     training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv')) \
         .sample(frac=1, random_state=1000)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
@@ -634,6 +664,12 @@ if __name__ == '__main__':
     training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
     training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
                                                                  REPRESENTATION_PATH_GAN_TRAIN_50)
+    training_rep_data_gan_50_20 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.4)
+    print 'original size = %d' % training_rep_data_gan_50.shape[0]
+    print 'reduced size = %d' % training_rep_data_gan_50_20.shape[0]
+    training_rep_data_gan_50_30 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.6)
+    training_rep_data_gan_50_40 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.8)
+
     training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
                                                                  REPRESENTATION_PATH_GAN_TRAIN_25)
     training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
@@ -642,21 +678,42 @@ if __name__ == '__main__':
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
     # script for training with all the combinations we have using both rgb and depth data
-    for i in range(4, 6):
-        for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1], [CHECK_POINT_100,
-                                                                                           CHECK_POINT_50,
-                                                                                           CHECK_POINT_25,
-                                                                                           CHECK_POINT_10,
-                                                                                           CHECK_POINT_50_50,
-                                                                                           CHECK_POINT_25_75,
-                                                                                           CHECK_POINT_10_90],
+    for i in range(7, 8):
+        for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1, 1, 1, 1], [CHECK_POINT_100,
+                                                                                                    CHECK_POINT_50,
+                                                                                                    CHECK_POINT_25,
+                                                                                                    CHECK_POINT_10,
+                                                                                                    CHECK_POINT_50_20,
+                                                                                                    CHECK_POINT_50_30,
+                                                                                                    CHECK_POINT_50_40,
+                                                                                                    CHECK_POINT_50_50,
+                                                                                                    CHECK_POINT_25_75,
+                                                                                                    CHECK_POINT_10_90],
                                                             [training_rep_data,
                                                              training_rep_data,
                                                              training_rep_data,
                                                              training_rep_data,
+                                                             training_rep_data_gan_50_20,
+                                                             training_rep_data_gan_50_30,
+                                                             training_rep_data_gan_50_40,
                                                              training_rep_data_gan_50,
                                                              training_rep_data_gan_25,
                                                              training_rep_data_gan_10]):
+
+            #for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1], [CHECK_POINT_100,
+        #                                                                                   CHECK_POINT_50,
+        #                                                                                   CHECK_POINT_25,
+        #                                                                                   CHECK_POINT_10,
+        #                                                                                   CHECK_POINT_50_50,
+        #                                                                                   CHECK_POINT_25_75,
+        #                                                                                   CHECK_POINT_10_90],
+        #                                                    [training_rep_data,
+        #                                                     training_rep_data,
+        #                                                     training_rep_data,
+        #                                                     training_rep_data,
+        #                                                     training_rep_data_gan_50,
+        #                                                     training_rep_data_gan_25,
+        #                                                     training_rep_data_gan_10]):
             # Train with only rgb
             # for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1], [CHECK_POINT_100_RGB_ONLY,
             #                                                                           CHECK_POINT_50_RGB_ONLY,
@@ -666,6 +723,8 @@ if __name__ == '__main__':
             #                                                      training_rep_data,
             #                                                      training_rep_data,
             #                                                      training_rep_data]):
+            if i == 7 and checkpoint_path == CHECK_POINT_100:
+                continue
             train_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i,
                                  data_fraction=fraction,
                                  checkpoint_to_save=checkpoint_path)
