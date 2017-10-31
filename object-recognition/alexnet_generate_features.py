@@ -266,8 +266,11 @@ def set_up_individual_model(batch_size, n_classes):
             'cross_entropy': cross_entropy}
 
 
-def set_up_network(batch_size, n_sources, n_classes, need_individual_network=False):
+def set_up_network(batch_size, dropout, n_classes, need_individual_network=False):
+    n_sources = 2
     classifier_x = tf.placeholder(tf.float32, shape=[None, 4096*n_sources])
+    x_rgb_dropout = tf.nn.dropout(classifier_x[:, 0:4096], 1 - dropout)
+    classifier_x = tf.concat([x_rgb_dropout, classifier_x[:, 4096: 4096*n_sources]], axis=1)
     y_ = tf.placeholder(tf.float32, shape=[None, n_classes])
 
     fc1_fusW = weight_variable([4096*n_sources, 4096])
@@ -338,12 +341,12 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
 
 
 def train_binary_network(train_df, test_df, batch_size, n_epochs,
-                         checkpoint_path='', n_sources=2, is_testing=False):
+                         checkpoint_path='', dropout=0.5, is_testing=False):
 
     n_classes = 51
 
     classifier_x, y_, fc_class, fc1_fusW = \
-        set_up_network(batch_size, n_sources, n_classes)
+        set_up_network(batch_size, dropout, n_classes)
 
     correct_prediction = tf.equal(tf.arg_max(y_, 1), tf.arg_max(fc_class, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -352,9 +355,10 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
     # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
+    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     init = tf.global_variables_initializer()
-    sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+    # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+    sess = tf.InteractiveSession()
     sess.run(init)
 
     saver = tf.train.Saver(max_to_keep=1)
@@ -401,10 +405,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
             # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
             # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
-            if n_sources == 2:
-                fc_7_fused, labels = load_representations(batch_df)
-            else:
-                fc_7_fused, labels = load_representations(batch_df, use_depth=False)
+            fc_7_fused, labels = load_representations(batch_df)
 
             if i % (steps_per_epoch/10) == 0:
                 train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
@@ -435,10 +436,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
         current_row = current_row + batch_size if current_row + batch_size < test_df.shape[0] else 0
 
-        if n_sources == 2:
-            fc_7_fused, labels = load_representations(batch_df)
-        else:
-            fc_7_fused, labels = load_representations(batch_df, use_depth=False)
+        fc_7_fused, labels = load_representations(batch_df)
         # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
 
         current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
@@ -599,7 +597,7 @@ def train_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoi
                                              test_split_lai,
                                              100, 8,
                                              join(checkpoint_to_save, 'iter_' + str(i)),
-                                             n_sources=2,
+                                             dropout=0.5,
                                              is_testing=False)
 
         with open(os.path.join(checkpoint_to_save, 'temp_8_epochs.txt'), 'a+') as f:
@@ -632,6 +630,7 @@ if __name__ == '__main__':
     CHECK_POINT_10_90 = join(CHECK_POINT_BASE, '10-90')
     CHECK_POINT_25_75 = join(CHECK_POINT_BASE, '25-75')
     CHECK_POINT_50_50 = join(CHECK_POINT_BASE, '50-50')
+    CHECK_POINT_50_50_DROPOUT = join(CHECK_POINT_BASE, '50-50-dropout')
     CHECK_POINT_50_20 = join(CHECK_POINT_BASE, '50-20')
     CHECK_POINT_50_30 = join(CHECK_POINT_BASE, '50-30')
     CHECK_POINT_50_40 = join(CHECK_POINT_BASE, '50-40')
@@ -664,67 +663,15 @@ if __name__ == '__main__':
     training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
     training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
                                                                  REPRESENTATION_PATH_GAN_TRAIN_50)
-    training_rep_data_gan_50_20 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.4)
-    print 'original size = %d' % training_rep_data_gan_50.shape[0]
-    print 'reduced size = %d' % training_rep_data_gan_50_20.shape[0]
-    training_rep_data_gan_50_30 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.6)
-    training_rep_data_gan_50_40 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.8)
-
-    training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
-                                                                 REPRESENTATION_PATH_GAN_TRAIN_25)
-    training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
-                                                                 REPRESENTATION_PATH_GAN_TRAIN_10)
+    # training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
+    #                                                              REPRESENTATION_PATH_GAN_TRAIN_25)
+    # training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
+    #                                                              REPRESENTATION_PATH_GAN_TRAIN_10)
 
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
     # script for training with all the combinations we have using both rgb and depth data
-    for i in range(7, 8):
-        for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1, 1, 1, 1], [CHECK_POINT_100,
-                                                                                                    CHECK_POINT_50,
-                                                                                                    CHECK_POINT_25,
-                                                                                                    CHECK_POINT_10,
-                                                                                                    CHECK_POINT_50_20,
-                                                                                                    CHECK_POINT_50_30,
-                                                                                                    CHECK_POINT_50_40,
-                                                                                                    CHECK_POINT_50_50,
-                                                                                                    CHECK_POINT_25_75,
-                                                                                                    CHECK_POINT_10_90],
-                                                            [training_rep_data,
-                                                             training_rep_data,
-                                                             training_rep_data,
-                                                             training_rep_data,
-                                                             training_rep_data_gan_50_20,
-                                                             training_rep_data_gan_50_30,
-                                                             training_rep_data_gan_50_40,
-                                                             training_rep_data_gan_50,
-                                                             training_rep_data_gan_25,
-                                                             training_rep_data_gan_10]):
-
-            #for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1], [CHECK_POINT_100,
-        #                                                                                   CHECK_POINT_50,
-        #                                                                                   CHECK_POINT_25,
-        #                                                                                   CHECK_POINT_10,
-        #                                                                                   CHECK_POINT_50_50,
-        #                                                                                   CHECK_POINT_25_75,
-        #                                                                                   CHECK_POINT_10_90],
-        #                                                    [training_rep_data,
-        #                                                     training_rep_data,
-        #                                                     training_rep_data,
-        #                                                     training_rep_data,
-        #                                                     training_rep_data_gan_50,
-        #                                                     training_rep_data_gan_25,
-        #                                                     training_rep_data_gan_10]):
-            # Train with only rgb
-            # for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1], [CHECK_POINT_100_RGB_ONLY,
-            #                                                                           CHECK_POINT_50_RGB_ONLY,
-            #                                                                           CHECK_POINT_25_RGB_ONLY,
-            #                                                                           CHECK_POINT_10_RGB_ONLY],
-            #                                                     [training_rep_data,
-            #                                                      training_rep_data,
-            #                                                      training_rep_data,
-            #                                                      training_rep_data]):
-            if i == 7 and checkpoint_path == CHECK_POINT_100:
-                continue
-            train_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i,
-                                 data_fraction=fraction,
-                                 checkpoint_to_save=checkpoint_path)
+    for i in range(0, 3):
+        train_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
+                             data_fraction=1,
+                             checkpoint_to_save=CHECK_POINT_50_50_DROPOUT)
