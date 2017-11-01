@@ -337,7 +337,8 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
 def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
                          checkpoint_path='', n_sources=2, is_testing=False):
 
-    with tf.Session() as sess:
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
+    with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         n_classes = 51
 
         classifier_x, y_, fc_class, fc1_fusW = \
@@ -435,6 +436,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
 
 
 def lai_et_al_split(train_df, test_df, n_sampling_step=1):
+    np.random.seed(1000)
     categories = np.sort(np.unique(train_df.category))
 
     # new_train_df = pd.DataFrame(columns=list(train_df))
@@ -458,8 +460,8 @@ def lai_et_al_split(train_df, test_df, n_sampling_step=1):
                 np.random.choice(9, size=2, replace=False)
             test_indices = np.random.choice(9, size=2, replace=False)
 
-            for i in test_indices:
-                test_sequences.append(sequences[i])
+            for test_index in test_indices:
+                test_sequences.append(sequences[test_index])
 
     for sequence in test_sequences:
         test_df = test_df.append(sequence)
@@ -559,8 +561,7 @@ def test_noise(check_points, noise_values, noise_representation_paths, cv_splits
         with open(os.path.join(base_check_point, 'temp_noise.txt'), 'a+') as f:
             f.writelines('#########NOISE = ' + str(noise_std) + '########### \n')
 
-        np.random.seed(1000)
-        for i in cv_splits_ids:
+        for cv_splits_id in cv_splits_ids:
             test_rep_data_noise = create_washington_representations(data_frame=test_data,
                                                                     saving_path=noise_path,
                                                                     noise_std=noise_std,
@@ -570,7 +571,7 @@ def test_noise(check_points, noise_values, noise_representation_paths, cv_splits
             # training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_gan_50_data, test_rep_data
             #                                                            , n_sampling_step=i)
             training_rep_data_lai, test_rep_data_lai = lai_et_al_split(training_rep_data, test_rep_data_noise,
-                                                                       n_sampling_step=i)
+                                                                       n_sampling_step=cv_splits_id)
             # training_rep_data_lai = training_rep_data_lai.sample(frac=1, random_state=1000)
 
             g = tf.Graph()
@@ -579,7 +580,7 @@ def test_noise(check_points, noise_values, noise_representation_paths, cv_splits
                                                 test_rep_data_lai,
                                                 50, 20,
                                                 MODEL_PATH,
-                                                os.path.join(check_points[i - 1]),
+                                                os.path.join(check_points[cv_splits_id - 1]),
                                                 is_testing=True)
 
                 with open(os.path.join(base_check_point, 'temp_noise.txt'), 'a+') as f:
@@ -670,6 +671,7 @@ if __name__ == '__main__':
     CHECK_POINTS_25 = [os.path.join(BASE_CHECK_POINT, '25-0', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_10 = [os.path.join(BASE_CHECK_POINT, '10-0', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_50_50 = [os.path.join(BASE_CHECK_POINT, '50-50', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_50_50_DROPOUT = [os.path.join(BASE_CHECK_POINT, '50-50-dropout', 'iter_' + str(i)) for i in range(0, 10)]
     CHECK_POINTS_25_75 = [os.path.join(BASE_CHECK_POINT, '25-75', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_10_90 = [os.path.join(BASE_CHECK_POINT, '10-90', 'iter_' + str(i)) for i in range(1, 11)]
 
@@ -695,4 +697,6 @@ if __name__ == '__main__':
     training_rep_data = pd.read_csv(REPRESENTATION_PATH_TRAINING)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
-    test_noise_script()
+    # test_noise_script()
+    test_noise(CHECK_POINTS_50_50_DROPOUT, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+               noise_rgb=True, noise_depth=True)
