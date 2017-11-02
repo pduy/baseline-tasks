@@ -672,6 +672,7 @@ if __name__ == '__main__':
     CHECK_POINTS_10 = [os.path.join(BASE_CHECK_POINT, '10-0', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_50_50 = [os.path.join(BASE_CHECK_POINT, '50-50', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_50_50_DROPOUT = [os.path.join(BASE_CHECK_POINT, '50-50-dropout', 'iter_' + str(i)) for i in range(0, 10)]
+    CHECK_POINTS_50_50_DROPOUT_75 = [os.path.join(BASE_CHECK_POINT, '50-50-dropout-75', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_25_75 = [os.path.join(BASE_CHECK_POINT, '25-75', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_10_90 = [os.path.join(BASE_CHECK_POINT, '10-90', 'iter_' + str(i)) for i in range(1, 11)]
 
@@ -698,5 +699,5 @@ if __name__ == '__main__':
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
     # test_noise_script()
-    test_noise(CHECK_POINTS_50_50_DROPOUT, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_50_50_DROPOUT_75, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+               noise_rgb=False, noise_depth=True)
