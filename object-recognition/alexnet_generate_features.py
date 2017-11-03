@@ -596,8 +596,8 @@ def train_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoi
         test_accuracy = train_binary_network(sampled_training,
                                              test_split_lai,
                                              100, 8,
-                                             join(checkpoint_to_save, 'iter_' + str(i)),
-                                             dropout=0.5,
+                                             join(checkpoint_to_save, 'iter_' + str(split_index)),
+                                             dropout=0.9,
                                              is_testing=False)
 
         with open(os.path.join(checkpoint_to_save, 'temp_8_epochs.txt'), 'a+') as f:
@@ -631,6 +631,8 @@ if __name__ == '__main__':
     CHECK_POINT_25_75 = join(CHECK_POINT_BASE, '25-75')
     CHECK_POINT_50_50 = join(CHECK_POINT_BASE, '50-50')
     CHECK_POINT_50_50_DROPOUT = join(CHECK_POINT_BASE, '50-50-dropout')
+    CHECK_POINT_50_50_DROPOUT_75 = join(CHECK_POINT_BASE, '50-50-dropout-75')
+    CHECK_POINT_50_50_DROPOUT_90 = join(CHECK_POINT_BASE, '50-50-dropout-90')
     CHECK_POINT_50_20 = join(CHECK_POINT_BASE, '50-20')
     CHECK_POINT_50_30 = join(CHECK_POINT_BASE, '50-30')
     CHECK_POINT_50_40 = join(CHECK_POINT_BASE, '50-40')
@@ -671,7 +673,7 @@ if __name__ == '__main__':
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
     # script for training with all the combinations we have using both rgb and depth data
-    for i in range(0, 3):
+    for i in range(1, 4):
         train_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
                              data_fraction=1,
-                             checkpoint_to_save=CHECK_POINT_50_50_DROPOUT)
+                             checkpoint_to_save=CHECK_POINT_50_50_DROPOUT_90)
