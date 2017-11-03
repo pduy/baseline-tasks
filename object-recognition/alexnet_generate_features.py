@@ -337,8 +337,9 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
 def train_binary_network(train_df, test_df, batch_size, n_epochs, model_path,
                          checkpoint_path='', n_sources=2, is_testing=False):
 
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
-    with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
+    # config=tf.ConfigProto(gpu_options=gpu_options)
+    with tf.Session() as sess:
         n_classes = 51
 
         classifier_x, y_, fc_class, fc1_fusW = \
@@ -471,7 +472,7 @@ def lai_et_al_split(train_df, test_df, n_sampling_step=1):
 
 
 def restore_model(path, sess):
-    print "restoring models"
+    print "restoring models from %s" % path
     saver = tf.train.import_meta_graph(join(path, 'fusion-net.meta'))
     checkpoint = tf.train.latest_checkpoint(path)
     saver.restore(sess, checkpoint)
@@ -673,6 +674,7 @@ if __name__ == '__main__':
     CHECK_POINTS_50_50 = [os.path.join(BASE_CHECK_POINT, '50-50', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_50_50_DROPOUT = [os.path.join(BASE_CHECK_POINT, '50-50-dropout', 'iter_' + str(i)) for i in range(0, 10)]
     CHECK_POINTS_50_50_DROPOUT_75 = [os.path.join(BASE_CHECK_POINT, '50-50-dropout-75', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_50_50_DROPOUT_90 = [os.path.join(BASE_CHECK_POINT, '50-50-dropout-90', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_25_75 = [os.path.join(BASE_CHECK_POINT, '25-75', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_10_90 = [os.path.join(BASE_CHECK_POINT, '10-90', 'iter_' + str(i)) for i in range(1, 11)]
 
@@ -699,5 +701,5 @@ if __name__ == '__main__':
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
     # test_noise_script()
-    test_noise(CHECK_POINTS_50_50_DROPOUT_75, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    test_noise(CHECK_POINTS_50_50_DROPOUT_90, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
                noise_rgb=False, noise_depth=True)
