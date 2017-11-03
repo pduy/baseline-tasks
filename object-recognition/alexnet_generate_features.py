@@ -266,11 +266,13 @@ def set_up_individual_model(batch_size, n_classes):
             'cross_entropy': cross_entropy}
 
 
-def set_up_network(batch_size, dropout, n_classes, need_individual_network=False):
+def set_up_network(batch_size, dropout, n_classes, need_individual_network=False, is_testing=False):
     n_sources = 2
     classifier_x = tf.placeholder(tf.float32, shape=[None, 4096*n_sources])
-    x_rgb_dropout = tf.nn.dropout(classifier_x[:, 0:4096], 1 - dropout)
-    classifier_x = tf.concat([x_rgb_dropout, classifier_x[:, 4096: 4096*n_sources]], axis=1)
+    if not is_testing:
+        x_rgb_dropout = tf.nn.dropout(classifier_x[:, 0:4096], 1 - dropout)
+        classifier_x = tf.concat([x_rgb_dropout, classifier_x[:, 4096: 4096*n_sources]], axis=1)
+
     y_ = tf.placeholder(tf.float32, shape=[None, n_classes])
 
     fc1_fusW = weight_variable([4096*n_sources, 4096])
@@ -346,29 +348,56 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
     n_classes = 51
 
     classifier_x, y_, fc_class, fc1_fusW = \
-        set_up_network(batch_size, dropout, n_classes)
+        set_up_network(batch_size, dropout, n_classes, is_testing)
 
     correct_prediction = tf.equal(tf.arg_max(y_, 1), tf.arg_max(fc_class, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=fc_class)
-    train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
 
     # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     init = tf.global_variables_initializer()
-    # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
     sess = tf.InteractiveSession()
     sess.run(init)
-
-    saver = tf.train.Saver(max_to_keep=1)
 
     # tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
     #               saving_path + "/tuning")
 
     if is_testing:
         restore_model(checkpoint_path, sess)
+
+        n_test_steps = int(np.ceil(test_df.shape[0] * 1.0 / batch_size))
+
+        accuracies = []
+        current_row = 0
+        for test_step in range(n_test_steps):
+            # Load the batch metadata
+            batch_df = test_df.iloc[current_row: current_row + batch_size] \
+                if current_row + batch_size < test_df.shape[0] \
+                else test_df.iloc[current_row: test_df.shape[0]] \
+                .append(test_df.iloc[0: current_row + batch_size - test_df.shape[0]])
+
+            current_row = current_row + batch_size if current_row + batch_size < test_df.shape[0] else 0
+
+            fc_7_fused, labels = load_representations(batch_df)
+            # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
+
+            current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
+
+            if test_step % 500 == 0:
+                print "step %d, %d left, accuracy %g" % (test_step, n_test_steps - test_step, current_accuracy)
+            accuracies.append(current_accuracy)
+
+        print "mean accuracy = %g" % np.mean(accuracies)
+
+        return np.mean(accuracies)
     else:
+        classifier_x, y_, fc_class, fc1_fusW = \
+            set_up_network(batch_size, dropout, n_classes, is_testing)
+
+        train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
+
+        saver = tf.train.Saver(max_to_keep=1)
         # timestamp = time.time()
         # parent = split(model_path)[0]
         # file_name = split(model_path)[1]
@@ -422,32 +451,6 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
             writer.add_summary(summary,
                                global_step=i)
 
-    # Test with the validation set
-    n_test_steps = int(np.ceil(test_df.shape[0] * 1.0 / batch_size))
-
-    accuracies = []
-    current_row = 0
-    for i in range(n_test_steps):
-        # Load the batch metadata
-        batch_df = test_df.iloc[current_row: current_row + batch_size] \
-            if current_row + batch_size < test_df.shape[0] \
-            else test_df.iloc[current_row: test_df.shape[0]] \
-            .append(test_df.iloc[0: current_row + batch_size - test_df.shape[0]])
-
-        current_row = current_row + batch_size if current_row + batch_size < test_df.shape[0] else 0
-
-        fc_7_fused, labels = load_representations(batch_df)
-        # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
-
-        current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
-
-        if i % 500 == 0:
-            print "step %d, %d left, accuracy %g" % (i, n_test_steps - i, current_accuracy)
-        accuracies.append(current_accuracy)
-
-    print "mean accuracy = %g" % np.mean(accuracies)
-
-    return np.mean(accuracies)
 
 
 def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
@@ -598,7 +601,7 @@ def train_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoi
                                              100, 8,
                                              join(checkpoint_to_save, 'iter_' + str(split_index)),
                                              dropout=0.9,
-                                             is_testing=False)
+                                             is_testing=True)
 
         with open(os.path.join(checkpoint_to_save, 'temp_8_epochs.txt'), 'a+') as f:
             f.writelines('acc = ' + str(test_accuracy) + '\n')
