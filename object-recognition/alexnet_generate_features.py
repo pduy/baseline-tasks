@@ -269,15 +269,17 @@ def set_up_individual_model(batch_size, n_classes):
 def set_up_network(batch_size, dropout, n_classes, need_individual_network=False, is_testing=False):
     n_sources = 2
     classifier_x = tf.placeholder(tf.float32, shape=[None, 4096*n_sources])
-    if not is_testing:
-        x_rgb_dropout = tf.nn.dropout(classifier_x[:, 0:4096], 1 - dropout)
-        classifier_x = tf.concat([x_rgb_dropout, classifier_x[:, 4096: 4096*n_sources]], axis=1)
-
     y_ = tf.placeholder(tf.float32, shape=[None, n_classes])
 
     fc1_fusW = weight_variable([4096*n_sources, 4096])
     fc1_fusb = bias_variable([4096])
-    fc1_fus = tf.nn.relu_layer(classifier_x, fc1_fusW, fc1_fusb)
+
+    if not is_testing:
+        x_rgb_dropout = tf.nn.dropout(classifier_x[:, 0:4096], 1 - dropout)
+        classifier_x_dropout = tf.concat([x_rgb_dropout, classifier_x[:, 4096: 4096*n_sources]], axis=1)
+        fc1_fus = tf.nn.relu_layer(classifier_x_dropout, fc1_fusW, fc1_fusb)
+    else:
+        fc1_fus = tf.nn.relu_layer(classifier_x, fc1_fusW, fc1_fusb)
 
     fc_classW = weight_variable([4096, n_classes])
     fc_classb = bias_variable([n_classes])
@@ -348,11 +350,12 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
     n_classes = 51
 
     classifier_x, y_, fc_class, fc1_fusW = \
-        set_up_network(batch_size, dropout, n_classes, is_testing)
+        set_up_network(batch_size, dropout, n_classes, is_testing=is_testing)
 
     correct_prediction = tf.equal(tf.arg_max(y_, 1), tf.arg_max(fc_class, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=fc_class)
+    train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
 
     # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
@@ -360,12 +363,12 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
     sess = tf.InteractiveSession()
     sess.run(init)
 
+    saver = tf.train.Saver(max_to_keep=1)
     # tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
     #               saving_path + "/tuning")
 
     if is_testing:
         restore_model(checkpoint_path, sess)
-
         n_test_steps = int(np.ceil(test_df.shape[0] * 1.0 / batch_size))
 
         accuracies = []
@@ -392,12 +395,6 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
         return np.mean(accuracies)
     else:
-        classifier_x, y_, fc_class, fc1_fusW = \
-            set_up_network(batch_size, dropout, n_classes, is_testing)
-
-        train_step = tf.train.AdamOptimizer(0.0001).minimize(cross_entropy)
-
-        saver = tf.train.Saver(max_to_keep=1)
         # timestamp = time.time()
         # parent = split(model_path)[0]
         # file_name = split(model_path)[1]
@@ -405,6 +402,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
         # saving_path = join(split(model_path)[0], "tuning-model")
         # if not isdir(saving_path):
         #     os.mkdir(saving_path)
+
 
         model_path = join(checkpoint_path, 'fusion-net')
         if not isdir(split(model_path)[0]):
@@ -450,7 +448,6 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
             _, summary = sess.run(fetches=[train_step, summary_op], feed_dict={classifier_x: fc_7_fused, y_: labels})
             writer.add_summary(summary,
                                global_step=i)
-
 
 
 def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
