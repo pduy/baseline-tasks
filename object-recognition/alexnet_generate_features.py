@@ -222,7 +222,7 @@ def fuse_batch_only_rgb(dataframe, sess, input_alex, fc7):
     return fc7_rgb, labels
 
 
-def load_representations(data_frame, use_depth=True):
+def load_representations(data_frame, use_depth=True, dropout=0.0):
     reps = []
     labels = []
     for i in range(data_frame.shape[0]):
@@ -235,6 +235,9 @@ def load_representations(data_frame, use_depth=True):
         labels.append(label)
 
         rgb_vector = np.loadtxt(rgb_file)
+
+        if np.random.uniform() < dropout:
+            rgb_vector = np.zeros(rgb_vector.shape)
 
         if use_depth:
             depth_vector = np.loadtxt(depth_file)
@@ -274,12 +277,12 @@ def set_up_network(batch_size, dropout, n_classes, need_individual_network=False
     fc1_fusW = weight_variable([4096*n_sources, 4096])
     fc1_fusb = bias_variable([4096])
 
-    if not is_testing:
-        x_rgb_dropout = tf.nn.dropout(classifier_x[:, 0:4096], 1 - dropout)
-        classifier_x_dropout = tf.concat([x_rgb_dropout, classifier_x[:, 4096: 4096*n_sources]], axis=1)
-        fc1_fus = tf.nn.relu_layer(classifier_x_dropout, fc1_fusW, fc1_fusb)
-    else:
-        fc1_fus = tf.nn.relu_layer(classifier_x, fc1_fusW, fc1_fusb)
+    # if not is_testing:
+    #     x_rgb_dropout = tf.nn.dropout(classifier_x[:, 0:4096], 1 - dropout)
+    #     classifier_x_dropout = tf.concat([x_rgb_dropout, classifier_x[:, 4096: 4096*n_sources]], axis=1)
+    #     fc1_fus = tf.nn.relu_layer(classifier_x_dropout, fc1_fusW, fc1_fusb)
+    # else:
+    fc1_fus = tf.nn.relu_layer(classifier_x, fc1_fusW, fc1_fusb)
 
     fc_classW = weight_variable([4096, n_classes])
     fc_classb = bias_variable([n_classes])
@@ -432,7 +435,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
             # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
             # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
-            fc_7_fused, labels = load_representations(batch_df)
+            fc_7_fused, labels = load_representations(batch_df, dropout=dropout)
 
             if i % (steps_per_epoch/10) == 0:
                 train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
@@ -593,18 +596,34 @@ def train_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoi
 
     g = tf.Graph()
     with g.as_default():
+        train_binary_network(sampled_training,
+                                             test_split_lai,
+                                             100, 8,
+                                             join(checkpoint_to_save, 'iter_' + str(split_index)),
+                                             dropout=0.5,
+                                             is_testing=False)
+
+    g = None
+
+
+def test_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoint_to_save):
+    training_split_lai, test_split_lai = lai_et_al_split(train_df, test_df, n_sampling_step=split_index)
+
+    sampled_training = training_split_lai.sample(frac=data_fraction, random_state=1000)
+
+    g = tf.Graph()
+    with g.as_default():
         test_accuracy = train_binary_network(sampled_training,
                                              test_split_lai,
                                              100, 8,
                                              join(checkpoint_to_save, 'iter_' + str(split_index)),
-                                             dropout=0.9,
+                                             dropout=0.5,
                                              is_testing=True)
 
         with open(os.path.join(checkpoint_to_save, 'temp_8_epochs.txt'), 'a+') as f:
             f.writelines('acc = ' + str(test_accuracy) + '\n')
 
     g = None
-
 
 if __name__ == '__main__':
     # CHECK_POINT_ORIGINAL_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73'
@@ -674,6 +693,14 @@ if __name__ == '__main__':
 
     # script for training with all the combinations we have using both rgb and depth data
     for i in range(1, 4):
+        test_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
+                            data_fraction=1,
+                            checkpoint_to_save=CHECK_POINT_50_50_DROPOUT_90)
+
         train_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
                              data_fraction=1,
-                             checkpoint_to_save=CHECK_POINT_50_50_DROPOUT_90)
+                             checkpoint_to_save=CHECK_POINT_50_50_DROPOUT)
+
+        test_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
+                            data_fraction=1,
+                            checkpoint_to_save=CHECK_POINT_50_50_DROPOUT)
