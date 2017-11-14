@@ -497,7 +497,7 @@ def restore_model(path, sess):
 
 
 # def create_washington_representations(data_frame, saving_path, generated_portion=0.0):
-def create_washington_representations(data_frame, saving_path):
+def create_washington_representations(data_frame, saving_path, noise_std=0):
     if isfile(saving_path):
         return pd.read_csv(saving_path)
 
@@ -523,6 +523,7 @@ def create_washington_representations(data_frame, saving_path):
         print 'processing ' + location
         rgb_image = combined_image[:, 0: combined_image.shape[1]//2, :]
         depth_image = combined_image[:, combined_image.shape[1]//2: combined_image.shape[1], :]
+        rgb_image = rgb_image + np.random.normal(0, noise_std, np.shape(rgb_image))
 
         rgb_fc7 = alex_net_fc7(sess, input_alex, fc7, [rgb_image])
         depth_fc7 = alex_net_fc7(sess, input_alex, fc7, [depth_image])
@@ -660,6 +661,7 @@ if __name__ == '__main__':
     CHECK_POINT_50_RGB_ONLY = join(CHECK_POINT_BASE, '50-0-rgb')
     CHECK_POINT_25_RGB_ONLY = join(CHECK_POINT_BASE, '25-0-rgb')
     CHECK_POINT_10_RGB_ONLY = join(CHECK_POINT_BASE, '10-0-rgb')
+    CHECK_POINT_50_50_NOISE_40 = join(CHECK_POINT_BASE, '50-50-noise-40')
 
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
     REPRESENTATION_PATH_TRAINING = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/alex_rep_training.csv'
@@ -667,6 +669,8 @@ if __name__ == '__main__':
     REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
     REPRESENTATION_PATH_GAN_TRAIN_25 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_25/alex_rep_gan_train_25.csv'
     REPRESENTATION_PATH_GAN_TRAIN_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_10/alex_rep_gan_train_10.csv'
+    REPRESENTATION_PATH_RGB_NOISE_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50_noise_40/' \
+                                       'alex_rep_gan_train_50_noise_40.csv'
 
     CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
     GAN_PROCESSED_CSV_50 = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-50-test/processed-images' \
@@ -683,7 +687,8 @@ if __name__ == '__main__':
 
     training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
     training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
-                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
+                                                                 REPRESENTATION_PATH_RGB_NOISE_40,
+                                                                 noise_std=40)
     # training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
     #                                                              REPRESENTATION_PATH_GAN_TRAIN_25)
     # training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
@@ -693,14 +698,10 @@ if __name__ == '__main__':
 
     # script for training with all the combinations we have using both rgb and depth data
     for i in range(1, 4):
-        test_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
-                            data_fraction=1,
-                            checkpoint_to_save=CHECK_POINT_50_50_DROPOUT_90)
-
         train_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
                              data_fraction=1,
-                             checkpoint_to_save=CHECK_POINT_50_50_DROPOUT)
+                             checkpoint_to_save=CHECK_POINT_50_50_NOISE_40)
 
         test_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
                             data_fraction=1,
-                            checkpoint_to_save=CHECK_POINT_50_50_DROPOUT)
+                            checkpoint_to_save=CHECK_POINT_50_50_NOISE_40)
