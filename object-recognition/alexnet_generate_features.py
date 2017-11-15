@@ -241,8 +241,8 @@ def load_representations(data_frame, use_depth=True, dropout=0.0):
 
         if use_depth:
             depth_vector = np.loadtxt(depth_file)
-            rep = np.concatenate([rgb_vector, depth_vector], axis=0)
-            reps.append(rep)
+            # rep = np.concatenate([rgb_vector, depth_vector], axis=0)
+            reps.append(depth_vector)
         else:
             reps.append(rgb_vector)
 
@@ -270,7 +270,7 @@ def set_up_individual_model(batch_size, n_classes):
 
 
 def set_up_network(batch_size, dropout, n_classes, need_individual_network=False, is_testing=False):
-    n_sources = 2
+    n_sources = 1
     classifier_x = tf.placeholder(tf.float32, shape=[None, 4096*n_sources])
     y_ = tf.placeholder(tf.float32, shape=[None, n_classes])
 
@@ -662,6 +662,7 @@ if __name__ == '__main__':
     CHECK_POINT_25_RGB_ONLY = join(CHECK_POINT_BASE, '25-0-rgb')
     CHECK_POINT_10_RGB_ONLY = join(CHECK_POINT_BASE, '10-0-rgb')
     CHECK_POINT_50_50_NOISE_40 = join(CHECK_POINT_BASE, '50-50-noise-40')
+    CHECK_POINT_50_50_ONLY_DEPTH = join(CHECK_POINT_BASE, '50-50-only-depth')
 
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
     REPRESENTATION_PATH_TRAINING = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/alex_rep_training.csv'
@@ -687,8 +688,7 @@ if __name__ == '__main__':
 
     training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
     training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
-                                                                 REPRESENTATION_PATH_RGB_NOISE_40,
-                                                                 noise_std=40)
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
     # training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
     #                                                              REPRESENTATION_PATH_GAN_TRAIN_25)
     # training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
@@ -700,8 +700,8 @@ if __name__ == '__main__':
     for i in range(1, 4):
         train_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
                              data_fraction=1,
-                             checkpoint_to_save=CHECK_POINT_50_50_NOISE_40)
+                             checkpoint_to_save=CHECK_POINT_50_50_ONLY_DEPTH)
 
         test_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
                             data_fraction=1,
-                            checkpoint_to_save=CHECK_POINT_50_50_NOISE_40)
+                            checkpoint_to_save=CHECK_POINT_50_50_ONLY_DEPTH)
