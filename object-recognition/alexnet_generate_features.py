@@ -228,7 +228,7 @@ def load_representations(data_frame, use_depth=True):
     for i in range(data_frame.shape[0]):
         current_row = data_frame.iloc[i]
         rgb_file = current_row.rgb_rep_location
-        depth_file = current_row.depth_rep_location
+        depth_file = current_row.rgb_generated_rep_location
 
         label = current_row.label[1:-1].split(' ')
         label = [int(x) for x in label]
@@ -501,7 +501,7 @@ def restore_model(path, sess):
 
 
 # def create_washington_representations(data_frame, saving_path, generated_portion=0.0):
-def create_washington_representations(data_frame, saving_path):
+def create_washington_representations(data_frame, saving_path, is_testing=True):
     if isfile(saving_path):
         return pd.read_csv(saving_path)
 
@@ -514,35 +514,41 @@ def create_washington_representations(data_frame, saving_path):
     sess.run(init)
 
     rep_data = []
-    for i in range(data_frame.shape[0]):
-        current_item = data_frame.iloc[i]
+    for item_index in range(data_frame.shape[0]):
+        current_item = data_frame.iloc[item_index]
 
         try:
             location = current_item.location_generated
             combined_image = imread(location)
         except (IOError, AttributeError):
-            # location = current_item.location
-            # combined_image = imread(location)
-            continue
+            if is_testing:
+                location = current_item.location
+                combined_image = imread(location)
+            else:
+                continue
 
         print 'processing ' + location
         rgb_image = combined_image[:, 0: combined_image.shape[1]//2, :]
-        depth_image = combined_image[:, combined_image.shape[1]//2: combined_image.shape[1], :]
+        rgb_image_generated = combined_image[:, combined_image.shape[1]//2: combined_image.shape[1], :]
+        # depth_image = combined_image[:, combined_image.shape[1]//2: combined_image.shape[1], :]
 
         rgb_fc7 = alex_net_fc7(sess, input_alex, fc7, [rgb_image])
-        depth_fc7 = alex_net_fc7(sess, input_alex, fc7, [depth_image])
+        rgb_fc7_generated = alex_net_fc7(sess, input_alex, fc7, [rgb_image_generated])
+        # depth_fc7 = alex_net_fc7(sess, input_alex, fc7, [depth_image])
 
         rgb_file = splitext(split(location)[1])[0] + 'rgb.dat'
         rgb_file = join(split(saving_path)[0], rgb_file)
-        depth_file = splitext(split(location)[1])[0] + 'depth.dat'
-        depth_file = join(split(saving_path)[0], depth_file)
+        rgb_file_generated = splitext(split(location)[1])[0] + 'rgb_generated.dat'
+        rgb_file_generated = join(split(saving_path)[0], rgb_file_generated)
+        # depth_file = splitext(split(location)[1])[0] + 'depth.dat'
+        # depth_file = join(split(saving_path)[0], depth_file)
 
         np.savetxt(rgb_file, rgb_fc7)
-        np.savetxt(depth_file, depth_fc7)
+        np.savetxt(rgb_file_generated, rgb_fc7_generated)
 
         rep_data.append({
             'rgb_rep_location': rgb_file,
-            'depth_rep_location': depth_file,
+            'rgb_generated_rep_location': rgb_file_generated,
             'label': current_item.label,
             'category': current_item.category,
             'instance_number': current_item.instance_number,
@@ -554,7 +560,6 @@ def create_washington_representations(data_frame, saving_path):
     df.to_csv(saving_path, index=False)
 
     return df
-
 
 def get_incomplete_gan_training_data(rep_df, portion):
     gan_list = os.listdir('/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-50-test/processed-images')
@@ -582,18 +587,6 @@ def get_incomplete_gan_training_data(rep_df, portion):
     return original_data.append(gan_data).sample(frac=1, random_state=1000)
 
 
-def test_gan_result(gan_test_df, gan_rep_dir, model_path, checkpoint_path):
-    gan_test_rep_data = create_washington_representations(gan_test_df, gan_rep_dir)
-    np.random.seed(1000)
-
-    train_binary_network('',
-                         gan_test_rep_data,
-                         50, 20,
-                         model_path,
-                         checkpoint_path,
-                         is_testing=True)
-
-
 def train_or_test_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoint_to_save, is_testing=True):
     training_split_lai, test_split_lai = lai_et_al_split(train_df, test_df, n_sampling_step=split_index)
 
@@ -619,20 +612,6 @@ def train_or_test_model_from_csv(train_df, test_df, split_index, data_fraction, 
 
 
 if __name__ == '__main__':
-    # CHECK_POINT_ORIGINAL_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500637255.73'
-    # CHECK_POINT_ORIGINAL_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500649350.08'
-    # CHECK_POINT_ORIGINAL_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1500658459.36'
-    # CHECK_POINT_GAN50_1 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499605776.99'
-    # CHECK_POINT_GAN50_2 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499619070.62'
-    # CHECK_POINT_GAN50_3 = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/1499629079.14'
-    # MODEL_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/fusion-net'
-    # MODEL_PATH = CHECK_POINT + 'fusion-net'
-    # REPRESENTATION_PATH_GAN_TRAIN_50 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50/alex_rep_gan_train_50.csv'
-    # REPRESENTATION_PATH_GAN_TRAIN_75 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_75/alex_rep_gan_train_75.csv'
-    # REPRESENTATION_PATH_GAN_TEST = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_test/alex_rep_gan_test.csv'
-    # GAN_PROCESSED_CSV_075 = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset-rgb-depth-train-split-075' \
-    #                         '/processed_images/gan-test-data.csv'
-
     CHECK_POINT_BASE = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/'
 
     CHECK_POINT_100 = join(CHECK_POINT_BASE, '100-0')
@@ -666,63 +645,32 @@ if __name__ == '__main__':
     GAN_PROCESSED_CSV_10 = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-10-test/processed-images' \
                            '/gan-test-data.csv'
 
-    '''GAN GENERATING POSE'''
-    GAN_PROCESSED_CSV_POSE = '/mnt/raid/data/ni/dnn/pduy/training-pose-16bit/' \
-                             'rgbd-50-reg-discrim-instance-noise-smooth-label-test/processed-images/' \
-                             '/gan-test-data.csv'
 
-    REPRESENTATION_PATH_GAN_TRAIN_POSE = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_pose/alex_rep_gan_train_pose.csv'
+    '''Stereo RGB classifier'''
+    RGB_STEREO_TRAIN_CSV = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data-stereo-rgb/training_set.csv'
+    RGB_STEREO_TEST_CSV = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data-stereo-rgb/test_set.csv'
+    # GAN_PROCESSED_CSV_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/training-pose-16bit/' \
+    #                             'rgbd-50-reg-discrim-instance-noise-smooth-label-filtering-categories-test/' \
+    #                             'processed-images-stereo-rgb/gan-test-data.csv'
+    REPRESENTATION_PATH_TRAIN_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/train_stereo_rgb/' \
+                                               'alex_rep_train_stereo_rgb.csv'
+    # REPRESENTATION_PATH_GAN_TRAIN_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_stereo_rgb_50/' \
+    #                                            'alex_rep_gan_train_stereo_rgb.csv'
+    REPRESENTATION_PATH_TEST_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_stereo_rgb/alex_rep_test_stereo_rgb.csv'
+    # CHECK_POINT_STEREO_RGB_50 = join(CHECK_POINT_BASE, 'stereo_rgb_50')
+    CHECK_POINT_STEREO_RGB_ORIGINAL = join(CHECK_POINT_BASE, 'stereo_rgb_original')
 
-    CHECK_POINT_POSE = join(CHECK_POINT_BASE, 'pose')
+    training_data = pd.read_csv(RGB_STEREO_TRAIN_CSV).sample(frac=1, random_state=1000)
+    test_data = pd.read_csv(RGB_STEREO_TEST_CSV)
 
-    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_POSE).sample(frac=1, random_state=1000)
-    # training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv')) \
-    #     .sample(frac=1, random_state=1000)
-    test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
+    training_rep_data = create_washington_representations(training_data,
+                                                          REPRESENTATION_PATH_TRAIN_STEREO_RGB,
+                                                          is_testing=True)
 
-    # training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
-    # training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
-    #                                                              REPRESENTATION_PATH_GAN_TRAIN_50)
-    # training_rep_data_gan_50_20 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.4)
-    # training_rep_data_gan_50_30 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.6)
-    # training_rep_data_gan_50_40 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.8)
-
-    # training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
-    #                                                              REPRESENTATION_PATH_GAN_TRAIN_25)
-    # training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
-    #                                                              REPRESENTATION_PATH_GAN_TRAIN_10)
-    training_rep_data_gan_pose = create_washington_representations(training_data_with_gan,
-                                                                   REPRESENTATION_PATH_GAN_TRAIN_POSE)
-
-    test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
-
-    # script for training with all the combinations we have using both rgb and depth data
-    # for i in range(7, 8):
-    #     for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1, 1, 1, 1], [CHECK_POINT_100,
-    #                                                                                                 CHECK_POINT_50,
-    #                                                                                                 CHECK_POINT_25,
-    #                                                                                                 CHECK_POINT_10,
-    #                                                                                                 CHECK_POINT_50_20,
-    #                                                                                                 CHECK_POINT_50_30,
-    #                                                                                                 CHECK_POINT_50_40,
-    #                                                                                                 CHECK_POINT_50_50,
-    #                                                                                                 CHECK_POINT_25_75,
-    #                                                                                                 CHECK_POINT_10_90],
-    #                                                         [training_rep_data,
-    #                                                          training_rep_data,
-    #                                                          training_rep_data,
-    #                                                          training_rep_data,
-    #                                                          training_rep_data_gan_50_20,
-    #                                                          training_rep_data_gan_50_30,
-    #                                                          training_rep_data_gan_50_40,
-    #                                                          training_rep_data_gan_50,
-    #                                                          training_rep_data_gan_25,
-    #                                                          training_rep_data_gan_10]):
-    #
-    #         train_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i,
-    #                              data_fraction=fraction,
-    #                              checkpoint_to_save=checkpoint_path)
+    test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST_STEREO_RGB)
 
     for i in range(1, 4):
-        train_or_test_model_from_csv(train_df=training_rep_data_gan_pose, test_df=test_rep_data, split_index=i, data_fraction=1,
-                                     checkpoint_to_save=CHECK_POINT_POSE)
+        train_or_test_model_from_csv(train_df=training_rep_data, test_df=test_rep_data, split_index=i,
+                                     data_fraction=1, checkpoint_to_save=CHECK_POINT_STEREO_RGB_ORIGINAL, is_testing=False)
+        train_or_test_model_from_csv(train_df=training_rep_data, test_df=test_rep_data, split_index=i,
+                                     data_fraction=1, checkpoint_to_save=CHECK_POINT_STEREO_RGB_ORIGINAL, is_testing=True)
