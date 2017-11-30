@@ -352,112 +352,113 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
     # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     # sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-    init = tf.global_variables_initializer()
-    sess = tf.InteractiveSession()
-    sess.run(init)
+    with tf.Session() as sess:
+        init = tf.global_variables_initializer()
+        sess.run(init)
 
-    saver = tf.train.Saver(max_to_keep=1)
+        saver = tf.train.Saver(max_to_keep=1)
 
-    # tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
-    #               saving_path + "/tuning")
+        # tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver, sess,
+        #               saving_path + "/tuning")
 
-    if is_testing:
-        restore_model(checkpoint_path, sess)
+        if is_testing:
+            restore_model(checkpoint_path, sess)
 
-        print 'batch size = %d' % batch_size
+            print 'batch size = %d' % batch_size
 
-        categories = test_df.category.unique()
+            categories = test_df.category.unique()
 
-        all_accuracies=[]
-        for category in categories:
-            sub_test_df = test_df[test_df.category == category]
-            print 'testing category %s' % category
-            print 'number of test items = %d' % sub_test_df.shape[0]
+            all_accuracies=[]
+            for category in categories:
+                sub_test_df = test_df[test_df.category == category]
+                print 'testing category %s' % category
+                print 'number of test items = %d' % sub_test_df.shape[0]
 
-            # Test with the validation set
-            n_test_steps = int(np.ceil(sub_test_df.shape[0] * 1.0 / batch_size))
+                # Test with the validation set
+                n_test_steps = int(np.ceil(sub_test_df.shape[0] * 1.0 / batch_size))
 
-            accuracies = []
+                accuracies = []
+                current_row = 0
+                for test_step in range(n_test_steps):
+                    # Load the batch metadata
+                    batch_df = sub_test_df.iloc[current_row: current_row + batch_size] \
+                        if current_row + batch_size < sub_test_df.shape[0] \
+                        else sub_test_df.iloc[current_row: sub_test_df.shape[0]]
+                    # .append(sub_test_df.iloc[0: current_row + batch_size - sub_test_df.shape[0]])
+
+                    current_row = current_row + batch_size if current_row + batch_size < sub_test_df.shape[0] else 0
+
+                    if n_sources == 2:
+                        fc_7_fused, labels = load_representations(batch_df)
+                    else:
+                        fc_7_fused, labels = load_representations(batch_df, use_depth=False)
+                    # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
+
+                    current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
+
+                    # if test_step % 500 == 0:
+                    #     print "step %d, %d left, accuracy %g" % (test_step, n_test_steps - test_step, current_accuracy)
+                    accuracies.append(current_accuracy)
+
+                current_mean_accuracy = np.mean(accuracies)
+                all_accuracies.append({'category': category, 'accuracy': current_mean_accuracy})
+                print "mean accuracy of '{0}' = '{1}'".format(category, current_mean_accuracy)
+
+            all_accuracies = pd.DataFrame(all_accuracies)
+            return all_accuracies
+        else:
+            model_path = join(checkpoint_path, 'fusion-net')
+            if not isdir(split(model_path)[0]):
+                os.makedirs(split(model_path)[0])
+
+            max_steps = n_epochs * train_df.shape[0] / batch_size
+            # max_steps = 20000  # set exactly the same as the paper Eitel et. al
+            steps_per_epoch = train_df.shape[0] / batch_size
+
+            print 'shuffled training data length = %d' % train_df.shape[0]
+            print 'test data length = %d' % test_df.shape[0]
+
+            writer = tf.summary.FileWriter(split(model_path)[0], sess.graph)
+            tf.summary.scalar("accuracy", accuracy)
+            tf.summary.scalar("loss", tf.reduce_mean(cross_entropy))
+            summary_op = tf.summary.merge_all()
+
             current_row = 0
-            for test_step in range(n_test_steps):
+            for cur_train_step in range(max_steps):
                 # Load the batch metadata
-                batch_df = sub_test_df.iloc[current_row: current_row + batch_size] \
-                    if current_row + batch_size < sub_test_df.shape[0] \
-                    else sub_test_df.iloc[current_row: sub_test_df.shape[0]]
-                # .append(sub_test_df.iloc[0: current_row + batch_size - sub_test_df.shape[0]])
+                batch_df = train_df.iloc[current_row: current_row + batch_size] \
+                    if current_row + batch_size < train_df.shape[0] \
+                    else train_df.iloc[current_row: train_df.shape[0]] \
+                    .append(train_df.iloc[0: current_row + batch_size - train_df.shape[0]])
 
-                current_row = current_row + batch_size if current_row + batch_size < sub_test_df.shape[0] else 0
+                current_row = current_row + batch_size if current_row + batch_size < train_df.shape[0] else 0
 
+                # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
+                # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
                 if n_sources == 2:
                     fc_7_fused, labels = load_representations(batch_df)
                 else:
                     fc_7_fused, labels = load_representations(batch_df, use_depth=False)
-                # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
 
-                current_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
+                if cur_train_step % (steps_per_epoch/10) == 0:
+                    train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
+                    print 'step %d, training accuracy = %g' % (cur_train_step, train_accuracy)
+                    train_loss = cross_entropy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
+                    print '======== train cross entropy = %g' % np.mean(train_loss)
 
-                # if test_step % 500 == 0:
-                #     print "step %d, %d left, accuracy %g" % (test_step, n_test_steps - test_step, current_accuracy)
-                accuracies.append(current_accuracy)
+                    saver.save(sess, model_path)
 
-            current_mean_accuracy = np.mean(accuracies)
-            all_accuracies.append({'category': category, 'accuracy': current_mean_accuracy})
-            print "mean accuracy of '{0}' = '{1}'".format(category, current_mean_accuracy)
+                # Train the last 2 layers
+                # train_step.run(feed_dict={classifier_x: fc_7_fused, y_: labels})
 
-        all_accuracies = pd.DataFrame(all_accuracies)
-        return all_accuracies
-    else:
-        model_path = join(checkpoint_path, 'fusion-net')
-        if not isdir(split(model_path)[0]):
-            os.makedirs(split(model_path)[0])
-
-        max_steps = n_epochs * train_df.shape[0] / batch_size
-        # max_steps = 20000  # set exactly the same as the paper Eitel et. al
-        steps_per_epoch = train_df.shape[0] / batch_size
-
-        print 'shuffled training data length = %d' % train_df.shape[0]
-        print 'test data length = %d' % test_df.shape[0]
-
-        writer = tf.summary.FileWriter(split(model_path)[0], sess.graph)
-        tf.summary.scalar("accuracy", accuracy)
-        tf.summary.scalar("loss", tf.reduce_mean(cross_entropy))
-        summary_op = tf.summary.merge_all()
-
-        current_row = 0
-        for cur_train_step in range(max_steps):
-            # Load the batch metadata
-            batch_df = train_df.iloc[current_row: current_row + batch_size] \
-                if current_row + batch_size < train_df.shape[0] \
-                else train_df.iloc[current_row: train_df.shape[0]] \
-                .append(train_df.iloc[0: current_row + batch_size - train_df.shape[0]])
-
-            current_row = current_row + batch_size if current_row + batch_size < train_df.shape[0] else 0
-
-            # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
-            # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
-            if n_sources == 2:
-                fc_7_fused, labels = load_representations(batch_df)
-            else:
-                fc_7_fused, labels = load_representations(batch_df, use_depth=False)
-
-            if cur_train_step % (steps_per_epoch/10) == 0:
-                train_accuracy = accuracy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
-                print 'step %d, training accuracy = %g' % (cur_train_step, train_accuracy)
-                train_loss = cross_entropy.eval(feed_dict={classifier_x: fc_7_fused, y_: labels})
-                print '======== train cross entropy = %g' % np.mean(train_loss)
-
-                saver.save(sess, model_path)
-
-            # Train the last 2 layers
-            # train_step.run(feed_dict={classifier_x: fc_7_fused, y_: labels})
-
-            _, summary = sess.run(fetches=[train_step, summary_op], feed_dict={classifier_x: fc_7_fused, y_: labels})
-            writer.add_summary(summary,
-                               global_step=cur_train_step)
-        return 0
+                _, summary = sess.run(fetches=[train_step, summary_op], feed_dict={classifier_x: fc_7_fused, y_: labels})
+                writer.add_summary(summary,
+                                   global_step=cur_train_step)
+            return 0
 
 
 def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
+    original_train_dir = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/'
     np.random.seed(seed)
     categories = np.sort(np.unique(train_df.category))
 
@@ -486,6 +487,13 @@ def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
                 test_sequences.append(sequences[i])
 
     for sequence in test_sequences:
+        # The data should be the original ones when inserted to the test set
+        original_rgb_depth_paths = sequence[['rgb_rep_location', 'depth_rep_location']] \
+            .applymap(lambda x: os.path.join(original_train_dir,os.path.split(x)[1]))
+
+        sequence['rgb_rep_location'] = original_rgb_depth_paths.rgb_rep_location
+        sequence['depth_rep_location'] = original_rgb_depth_paths.depth_rep_location
+
         test_df = test_df.append(sequence)
         train_df = train_df.drop(sequence.index)
 
@@ -602,11 +610,11 @@ def train_or_test_model_from_csv(train_df, test_df, split_index, data_fraction, 
     g = tf.Graph()
     with g.as_default():
         test_accuracies = train_binary_network(sampled_training,
-                             test_split_lai,
-                             200, 8,
-                             join(checkpoint_to_save, 'iter_' + str(split_index)),
-                             n_sources=2,
-                             is_testing=is_testing)
+                                               test_split_lai,
+                                               150, 8,
+                                               join(checkpoint_to_save, 'iter_' + str(split_index)),
+                                               n_sources=2,
+                                               is_testing=is_testing)
 
         if is_testing:
             print 'acc = ' + str(np.mean(test_accuracies.accuracy))
@@ -675,54 +683,59 @@ if __name__ == '__main__':
 
     CHECK_POINT_POSE = join(CHECK_POINT_BASE, 'pose')
 
-    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_POSE).sample(frac=1, random_state=1000)
-    # training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv')) \
-    #     .sample(frac=1, random_state=1000)
+    training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_50).sample(frac=1, random_state=1000)
+    training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv')) \
+        .sample(frac=1, random_state=1000)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
-    # training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
-    # training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
-    #                                                              REPRESENTATION_PATH_GAN_TRAIN_50)
-    # training_rep_data_gan_50_20 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.4)
-    # training_rep_data_gan_50_30 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.6)
-    # training_rep_data_gan_50_40 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.8)
+    training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
+    training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
+    training_rep_data_gan_50_20 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.4)
+    training_rep_data_gan_50_30 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.6)
+    training_rep_data_gan_50_40 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.8)
 
-    # training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
-    #                                                              REPRESENTATION_PATH_GAN_TRAIN_25)
-    # training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
-    #                                                              REPRESENTATION_PATH_GAN_TRAIN_10)
+    training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_25)
+    training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
+                                                                 REPRESENTATION_PATH_GAN_TRAIN_10)
     training_rep_data_gan_pose = create_washington_representations(training_data_with_gan,
                                                                    REPRESENTATION_PATH_GAN_TRAIN_POSE)
 
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
     # script for training with all the combinations we have using both rgb and depth data
-    # for i in range(7, 8):
-    #     for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1, 1, 1, 1], [CHECK_POINT_100,
-    #                                                                                                 CHECK_POINT_50,
-    #                                                                                                 CHECK_POINT_25,
-    #                                                                                                 CHECK_POINT_10,
-    #                                                                                                 CHECK_POINT_50_20,
-    #                                                                                                 CHECK_POINT_50_30,
-    #                                                                                                 CHECK_POINT_50_40,
-    #                                                                                                 CHECK_POINT_50_50,
-    #                                                                                                 CHECK_POINT_25_75,
-    #                                                                                                 CHECK_POINT_10_90],
-    #                                                         [training_rep_data,
-    #                                                          training_rep_data,
-    #                                                          training_rep_data,
-    #                                                          training_rep_data,
-    #                                                          training_rep_data_gan_50_20,
-    #                                                          training_rep_data_gan_50_30,
-    #                                                          training_rep_data_gan_50_40,
-    #                                                          training_rep_data_gan_50,
-    #                                                          training_rep_data_gan_25,
-    #                                                          training_rep_data_gan_10]):
-    #
-    #         train_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i,
-    #                              data_fraction=fraction,
-    #                              checkpoint_to_save=checkpoint_path)
+    for i in range(9, 11):
+        for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1, 1, 1, 1], [CHECK_POINT_100,
+                                                                                                    CHECK_POINT_50,
+                                                                                                    CHECK_POINT_25,
+                                                                                                    CHECK_POINT_10,
+                                                                                                    CHECK_POINT_50_20,
+                                                                                                    CHECK_POINT_50_30,
+                                                                                                    CHECK_POINT_50_40,
+                                                                                                    CHECK_POINT_50_50,
+                                                                                                    CHECK_POINT_25_75,
+                                                                                                    CHECK_POINT_10_90],
+                                                            [training_rep_data,
+                                                             training_rep_data,
+                                                             training_rep_data,
+                                                             training_rep_data,
+                                                             training_rep_data_gan_50_20,
+                                                             training_rep_data_gan_50_30,
+                                                             training_rep_data_gan_50_40,
+                                                             training_rep_data_gan_50,
+                                                             training_rep_data_gan_25,
+                                                             training_rep_data_gan_10]):
 
-    for i in range(1, 4):
-        train_or_test_model_from_csv(train_df=training_rep_data_gan_pose, test_df=test_rep_data, split_index=i, data_fraction=1,
-                                     checkpoint_to_save=CHECK_POINT_POSE)
+            train_or_test_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i,
+                                         data_fraction=fraction,
+                                         checkpoint_to_save=checkpoint_path,
+                                         is_testing=False)
+            train_or_test_model_from_csv(train_df=training_data, test_df=test_rep_data, split_index=i,
+                                         data_fraction=fraction,
+                                         checkpoint_to_save=checkpoint_path,
+                                         is_testing=True)
+
+    # for i in range(1, 4):
+    #     train_or_test_model_from_csv(train_df=training_rep_data_gan_pose, test_df=test_rep_data, split_index=i, data_fraction=1,
+    #                                  checkpoint_to_save=CHECK_POINT_POSE)
