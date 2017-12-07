@@ -579,7 +579,7 @@ def test_noise(check_points, noise_values, noise_representation_paths, cv_splits
             with g.as_default():
                 accuracy = train_binary_network(training_rep_data_lai,
                                                 test_rep_data_lai,
-                                                50, 20,
+                                                200, 8,
                                                 MODEL_PATH,
                                                 os.path.join(check_points[cv_splits_id - 1]),
                                                 is_testing=True)
@@ -591,53 +591,53 @@ def test_noise(check_points, noise_values, noise_representation_paths, cv_splits
 
 
 def test_noise_script():
-    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
-    test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
-    test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
-    test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
-    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
-    test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
-    test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
+    # test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 11),
+    #            noise_rgb=False, noise_depth=True)
+    # test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=False, noise_depth=True)
+    # test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=False, noise_depth=True)
+    # test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=False, noise_depth=True)
+    # test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 11),
+    #            noise_rgb=False, noise_depth=True)
+    # test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 11),
+    #            noise_rgb=False, noise_depth=True)
+    # test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 11),
+    #            noise_rgb=False, noise_depth=True)
 
-    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS[4], range(1, 4),
+    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 11),
                noise_rgb=True, noise_depth=False)
-    test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
+    # test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=False)
+    # test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=False)
+    # test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=False)
+    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 11),
                noise_rgb=True, noise_depth=False)
-    test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=False)
-    test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=False)
-    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=False)
-    test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=False)
-    test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=False)
+    # test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=False)
+    # test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_RGB_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=False)
 
     merge_rgb_noises_with_depth_noises(REPRESENTATION_RGB_NOISE_TEST_PATHS, REPRESENTATION_DEPTH_NOISE_TEST_PATHS,
                                        REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS)
 
-    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    test_noise(CHECK_POINTS_100, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 11),
                noise_rgb=True, noise_depth=True)
-    test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    # test_noise(CHECK_POINTS_50, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=True)
+    # test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=True)
+    # test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=True)
+    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 11),
                noise_rgb=True, noise_depth=True)
-    test_noise(CHECK_POINTS_25, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=True)
-    test_noise(CHECK_POINTS_10, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=True)
-    test_noise(CHECK_POINTS_50_50, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=True)
-    test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=True)
-    test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=True, noise_depth=True)
+    # test_noise(CHECK_POINTS_25_75, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=True)
+    # test_noise(CHECK_POINTS_10_90, NOISES, REPRESENTATION_RGB_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=True, noise_depth=True)
 
 
 def merge_rgb_noises_with_depth_noises(rgb_noise_paths, depth_noise_paths, saving_paths):
@@ -672,12 +672,13 @@ if __name__ == '__main__':
     CHECK_POINTS_25 = [os.path.join(BASE_CHECK_POINT, '25-0', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_10 = [os.path.join(BASE_CHECK_POINT, '10-0', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_50_50 = [os.path.join(BASE_CHECK_POINT, '50-50', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_25_75 = [os.path.join(BASE_CHECK_POINT, '25-75', 'iter_' + str(i)) for i in range(1, 11)]
+    CHECK_POINTS_10_90 = [os.path.join(BASE_CHECK_POINT, '10-90', 'iter_' + str(i)) for i in range(1, 11)]
+
     CHECK_POINTS_50_50_DROPOUT = [os.path.join(BASE_CHECK_POINT, '50-50-dropout', 'iter_' + str(i)) for i in range(0, 10)]
     CHECK_POINTS_50_50_DROPOUT_75 = [os.path.join(BASE_CHECK_POINT, '50-50-dropout-75', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_50_50_DROPOUT_90 = [os.path.join(BASE_CHECK_POINT, '50-50-dropout-90', 'iter_' + str(i)) for i in range(1, 11)]
     CHECK_POINTS_50_50_NOISE_40 = [os.path.join(BASE_CHECK_POINT, '50-50-noise-40', 'iter_' + str(i)) for i in range(1, 11)]
-    CHECK_POINTS_25_75 = [os.path.join(BASE_CHECK_POINT, '25-75', 'iter_' + str(i)) for i in range(1, 11)]
-    CHECK_POINTS_10_90 = [os.path.join(BASE_CHECK_POINT, '10-90', 'iter_' + str(i)) for i in range(1, 11)]
 
     # MODEL_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-model/fusion-net'
     MODEL_PATH = BASE_CHECK_POINT + 'fusion-net'
@@ -701,6 +702,6 @@ if __name__ == '__main__':
     training_rep_data = pd.read_csv(REPRESENTATION_PATH_TRAINING)
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
-    # test_noise_script()
-    test_noise(CHECK_POINTS_50_50_NOISE_40, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
-               noise_rgb=False, noise_depth=True)
+    test_noise_script()
+    # test_noise(CHECK_POINTS_50_50_NOISE_40, NOISES, REPRESENTATION_DEPTH_NOISE_TEST_PATHS, range(1, 4),
+    #            noise_rgb=False, noise_depth=True)
