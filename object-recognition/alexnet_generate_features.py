@@ -454,6 +454,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
 
 def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
+    original_train_dir = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/'
     np.random.seed(seed)
     categories = np.sort(np.unique(train_df.category))
 
@@ -482,6 +483,13 @@ def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
                 test_sequences.append(sequences[i])
 
     for sequence in test_sequences:
+        # The data should be the original ones when inserted to the test set
+        original_rgb_depth_paths = sequence[['rgb_rep_location', 'depth_rep_location']] \
+            .applymap(lambda x: os.path.join(original_train_dir, os.path.split(x)[1]))
+
+        sequence['rgb_rep_location'] = original_rgb_depth_paths.rgb_rep_location
+        sequence['depth_rep_location'] = original_rgb_depth_paths.depth_rep_location
+
         test_df = test_df.append(sequence)
         train_df = train_df.drop(sequence.index)
 
@@ -601,7 +609,7 @@ def train_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoi
                                              test_split_lai,
                                              100, 8,
                                              join(checkpoint_to_save, 'iter_' + str(split_index)),
-                                             dropout=0.5,
+                                             dropout=0.0,
                                              is_testing=False)
 
     g = None
@@ -618,7 +626,7 @@ def test_model_from_csv(train_df, test_df, split_index, data_fraction, checkpoin
                                              test_split_lai,
                                              100, 8,
                                              join(checkpoint_to_save, 'iter_' + str(split_index)),
-                                             dropout=0.5,
+                                             dropout=0.0,
                                              is_testing=True)
 
         with open(os.path.join(checkpoint_to_save, 'temp_8_epochs.txt'), 'a+') as f:
@@ -662,6 +670,7 @@ if __name__ == '__main__':
     CHECK_POINT_25_RGB_ONLY = join(CHECK_POINT_BASE, '25-0-rgb')
     CHECK_POINT_10_RGB_ONLY = join(CHECK_POINT_BASE, '10-0-rgb')
     CHECK_POINT_50_50_NOISE_40 = join(CHECK_POINT_BASE, '50-50-noise-40')
+    CHECK_POINT_50_50_NOISE_20 = join(CHECK_POINT_BASE, '50-50-noise-20')
     CHECK_POINT_50_50_ONLY_DEPTH = join(CHECK_POINT_BASE, '50-50-only-depth')
 
     PROCESSED_PAIR_PATH = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data/'
@@ -672,6 +681,8 @@ if __name__ == '__main__':
     REPRESENTATION_PATH_GAN_TRAIN_10 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_10/alex_rep_gan_train_10.csv'
     REPRESENTATION_PATH_RGB_NOISE_40 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50_noise_40/' \
                                        'alex_rep_gan_train_50_noise_40.csv'
+    REPRESENTATION_PATH_RGB_NOISE_20 = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_50_noise_20/' \
+                                       'alex_rep_gan_train_50_noise_20.csv'
 
     CSV_AGGREGATED_DEFAULT = '/mnt/raid/data/ni/dnn/pduy/rgbd-dataset/rgbd-dataset-interpolated-aggregated.csv'
     GAN_PROCESSED_CSV_50 = '/mnt/raid/data/ni/dnn/pduy/training-depth-16bit/rgbd-depth-50-test/processed-images' \
@@ -687,21 +698,33 @@ if __name__ == '__main__':
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
     training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
-    training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
-                                                                 REPRESENTATION_PATH_GAN_TRAIN_50)
+    # training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
+    #                                                              REPRESENTATION_PATH_GAN_TRAIN_50)
     # training_rep_data_gan_25 = create_washington_representations(training_data_with_gan,
     #                                                              REPRESENTATION_PATH_GAN_TRAIN_25)
     # training_rep_data_gan_10 = create_washington_representations(training_data_with_gan,
     #                                                              REPRESENTATION_PATH_GAN_TRAIN_10)
+    training_rep_data_noise_40 = create_washington_representations(training_data_with_gan,
+                                                                   REPRESENTATION_PATH_RGB_NOISE_40,
+                                                                   noise_std=40)
+    training_rep_data_noise_20 = create_washington_representations(training_data_with_gan,
+                                                                   REPRESENTATION_PATH_RGB_NOISE_20,
+                                                                   noise_std=20)
 
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
     # script for training with all the combinations we have using both rgb and depth data
     for i in range(1, 4):
-        train_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
+        train_model_from_csv(train_df=training_rep_data_noise_40, test_df=test_rep_data, split_index=i,
                              data_fraction=1,
-                             checkpoint_to_save=CHECK_POINT_50_50_ONLY_DEPTH)
-
-        test_model_from_csv(train_df=training_rep_data_gan_50, test_df=test_rep_data, split_index=i,
+                             checkpoint_to_save=CHECK_POINT_50_50_NOISE_40)
+        test_model_from_csv(train_df=training_rep_data_noise_40, test_df=test_rep_data, split_index=i,
                             data_fraction=1,
-                            checkpoint_to_save=CHECK_POINT_50_50_ONLY_DEPTH)
+                            checkpoint_to_save=CHECK_POINT_50_50_NOISE_40)
+
+        train_model_from_csv(train_df=training_rep_data_noise_20, test_df=test_rep_data, split_index=i,
+                             data_fraction=1,
+                             checkpoint_to_save=CHECK_POINT_50_50_NOISE_20)
+        test_model_from_csv(train_df=training_rep_data_noise_20, test_df=test_rep_data, split_index=i,
+                            data_fraction=1,
+                            checkpoint_to_save=CHECK_POINT_50_50_NOISE_20)
