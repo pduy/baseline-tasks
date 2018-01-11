@@ -222,7 +222,8 @@ def fuse_batch_only_rgb(dataframe, sess, input_alex, fc7):
     return fc7_rgb, labels
 
 
-def load_representations(data_frame, use_depth=True):
+def load_representations(data_frame, use_depth=True, categories=None):
+
     reps = []
     labels = []
     for i in range(data_frame.shape[0]):
@@ -230,9 +231,12 @@ def load_representations(data_frame, use_depth=True):
         rgb_file = current_row.rgb_rep_location
         depth_file = current_row.rgb_generated_rep_location
 
-        label = current_row.label[1:-1].split(' ')
-        label = [int(x) for x in label]
-        labels.append(label)
+        if categories is not None:
+            labels.append(np.array([int(c == current_row.category) for c in categories]))
+        else:
+            label = current_row.label[1:-1].split(' ')
+            label = [int(x) for x in label]
+            labels.append(label)
 
         rgb_vector = np.loadtxt(rgb_file)
 
@@ -340,7 +344,9 @@ def tune_alex_net(rgb_model_data, depth_model_data, train_df, batch_size, saver,
 def train_binary_network(train_df, test_df, batch_size, n_epochs,
                          checkpoint_path='', n_sources=2, is_testing=False):
 
-    n_classes = 51
+    n_classes = 34
+
+    categories = np.sort(np.unique(train_df.category))
 
     classifier_x, y_, fc_class, fc1_fusW = \
         set_up_network(batch_size, n_sources, n_classes)
@@ -366,8 +372,6 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
 
         print 'batch size = %d' % batch_size
 
-        categories = test_df.category.unique()
-
         all_accuracies=[]
         for category in categories:
             sub_test_df = test_df[test_df.category == category]
@@ -389,7 +393,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
                 current_row = current_row + batch_size if current_row + batch_size < sub_test_df.shape[0] else 0
 
                 if n_sources == 2:
-                    fc_7_fused, labels = load_representations(batch_df)
+                    fc_7_fused, labels = load_representations(batch_df, categories=categories)
                 else:
                     fc_7_fused, labels = load_representations(batch_df, use_depth=False)
                 # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
@@ -436,7 +440,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
             # fc_7_fused, labels = fuse_batch(batch_df, sess, rgb_model_data, depth_model_data)
             # fc_7_fused, labels = fuse_batch_only_rgb(batch_df, sess, input_alex, fc7)
             if n_sources == 2:
-                fc_7_fused, labels = load_representations(batch_df)
+                fc_7_fused, labels = load_representations(batch_df, categories=categories)
             else:
                 fc_7_fused, labels = load_representations(batch_df, use_depth=False)
 
@@ -647,30 +651,41 @@ if __name__ == '__main__':
 
 
     '''Stereo RGB classifier'''
-    RGB_STEREO_TRAIN_CSV = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data-stereo-rgb/training_set.csv'
+    # RGB_STEREO_TRAIN_CSV = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data-stereo-rgb/training_set.csv'
     RGB_STEREO_TEST_CSV = '/mnt/raid/data/ni/dnn/pduy/eitel-et-al-data-stereo-rgb/test_set.csv'
-    # GAN_PROCESSED_CSV_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/training-pose-16bit/' \
-    #                             'rgbd-50-reg-discrim-instance-noise-smooth-label-filtering-categories-test/' \
-    #                             'processed-images-stereo-rgb/gan-test-data.csv'
-    REPRESENTATION_PATH_TRAIN_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/train_stereo_rgb/' \
-                                               'alex_rep_train_stereo_rgb.csv'
-    # REPRESENTATION_PATH_GAN_TRAIN_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_stereo_rgb_50/' \
-    #                                            'alex_rep_gan_train_stereo_rgb.csv'
+    GAN_PROCESSED_CSV_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/training-pose-16bit/' \
+                                'rgbd-50-reg-discrim-instance-noise-one-sided-smooth-label-filtering-categories-test/' \
+                                'processed-images-stereo-rgb/gan-test-data.csv'
+    # REPRESENTATION_PATH_TRAIN_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/train_stereo_rgb/' \
+    #                                            'alex_rep_train_stereo_rgb.csv'
+    REPRESENTATION_PATH_GAN_TRAIN_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/gan_train_stereo_rgb_50/' \
+                                               'alex_rep_gan_train_stereo_rgb.csv'
     REPRESENTATION_PATH_TEST_STEREO_RGB = '/mnt/raid/data/ni/dnn/pduy/alex_rep/test_stereo_rgb/alex_rep_test_stereo_rgb.csv'
-    # CHECK_POINT_STEREO_RGB_50 = join(CHECK_POINT_BASE, 'stereo_rgb_50')
-    CHECK_POINT_STEREO_RGB_ORIGINAL = join(CHECK_POINT_BASE, 'stereo_rgb_original')
+    CHECK_POINT_STEREO_RGB_50 = join(CHECK_POINT_BASE, 'stereo_rgb_50')
+    # CHECK_POINT_STEREO_RGB_ORIGINAL = join(CHECK_POINT_BASE, 'stereo_rgb_original')
 
-    training_data = pd.read_csv(RGB_STEREO_TRAIN_CSV).sample(frac=1, random_state=1000)
+    categories_to_remove = ['apple', 'bowl', 'food_can', 'food_cup',
+                            'food_jar', 'garlic', 'glue_stick', 'lemon',
+                            'lime', 'mushroom', 'onion', 'orange', 'peach',
+                            'plate', 'soda_can', 'tomato', 'water_bottle']
+
+
+    training_data = pd.read_csv(GAN_PROCESSED_CSV_STEREO_RGB).sample(frac=1, random_state=1000)
     test_data = pd.read_csv(RGB_STEREO_TEST_CSV)
+    training_data = training_data[~training_data.category.isin(categories_to_remove)]
+    test_data = test_data[~test_data.category.isin(categories_to_remove)]
 
     training_rep_data = create_washington_representations(training_data,
-                                                          REPRESENTATION_PATH_TRAIN_STEREO_RGB,
+                                                          REPRESENTATION_PATH_GAN_TRAIN_STEREO_RGB,
                                                           is_testing=True)
 
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST_STEREO_RGB)
 
+    training_rep_data = training_rep_data[~training_rep_data.category.isin(categories_to_remove)]
+    test_rep_data = test_rep_data[~test_rep_data.category.isin(categories_to_remove)]
+
     for i in range(1, 4):
         train_or_test_model_from_csv(train_df=training_rep_data, test_df=test_rep_data, split_index=i,
-                                     data_fraction=1, checkpoint_to_save=CHECK_POINT_STEREO_RGB_ORIGINAL, is_testing=False)
+                                     data_fraction=1, checkpoint_to_save=CHECK_POINT_STEREO_RGB_50, is_testing=False)
         train_or_test_model_from_csv(train_df=training_rep_data, test_df=test_rep_data, split_index=i,
-                                     data_fraction=1, checkpoint_to_save=CHECK_POINT_STEREO_RGB_ORIGINAL, is_testing=True)
+                                     data_fraction=1, checkpoint_to_save=CHECK_POINT_STEREO_RGB_50, is_testing=True)
