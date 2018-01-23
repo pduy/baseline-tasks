@@ -457,6 +457,7 @@ def train_binary_network(train_df, test_df, batch_size, n_epochs,
             return 0
 
 
+# The method for creating stratified random train-test split in Lai et al
 def lai_et_al_split(train_df, test_df, n_sampling_step=1, seed=1000):
     original_train_dir = '/mnt/raid/data/ni/dnn/pduy/alex_rep/training/'
     np.random.seed(seed)
@@ -683,14 +684,24 @@ if __name__ == '__main__':
 
     CHECK_POINT_POSE = join(CHECK_POINT_BASE, 'pose')
 
+    # the GAN synthesized data is processed (colorized and paired) using the code from NI deep, which results in a
+    # folder and a CSV file for management
+    # Here we read that csv to have the training data
     training_data_with_gan = pd.read_csv(GAN_PROCESSED_CSV_50).sample(frac=1, random_state=1000)
+
+    # A similar CSV but for original data
     training_data_without_gan = pd.read_csv(join(PROCESSED_PAIR_PATH, 'training_set.csv')) \
         .sample(frac=1, random_state=1000)
+
+    # The test data is the same through-out the experiments
     test_data = pd.read_csv(join(PROCESSED_PAIR_PATH, 'test_set.csv'))
 
+    # Having the training data, this function will pass them through AlexNet to create representations
     training_rep_data = create_washington_representations(training_data_without_gan, REPRESENTATION_PATH_TRAINING)
     training_rep_data_gan_50 = create_washington_representations(training_data_with_gan,
                                                                  REPRESENTATION_PATH_GAN_TRAIN_50)
+
+    # In some experiments, we need an imcomplete amount of GAN data
     training_rep_data_gan_50_20 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.4)
     training_rep_data_gan_50_30 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.6)
     training_rep_data_gan_50_40 = get_incomplete_gan_training_data(training_rep_data_gan_50, 0.8)
@@ -702,9 +713,11 @@ if __name__ == '__main__':
     training_rep_data_gan_pose = create_washington_representations(training_data_with_gan,
                                                                    REPRESENTATION_PATH_GAN_TRAIN_POSE)
 
+    # Extracting the representation of test data
     test_rep_data = create_washington_representations(test_data, REPRESENTATION_PATH_TEST)
 
     # script for training with all the combinations we have using both rgb and depth data
+    # and with different train-test split
     for i in range(9, 11):
         for fraction, checkpoint_path, training_data in zip([1, 0.5, 0.25, 0.1, 1, 1, 1, 1, 1, 1], [CHECK_POINT_100,
                                                                                                     CHECK_POINT_50,
